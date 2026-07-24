@@ -80,7 +80,7 @@ def get_current_user(authorization: str | None = Header(default=None)) -> Authed
 Run:
 
 ```bash
-cd /home/william/powabase-chatbot && .venv/bin/python3 - <<'EOF'
+cd /home/william/powabase-chatbot/.claude/worktrees/per-user-agent-isolation && .venv/bin/python3 - <<'EOF'
 import requests
 from app.config import settings
 from app.deps import get_current_user
@@ -178,7 +178,7 @@ Wait for the user to confirm they've run it before continuing to Step 2.
 Run:
 
 ```bash
-cd /home/william/powabase-chatbot && .venv/bin/python3 - <<'EOF'
+cd /home/william/powabase-chatbot/.claude/worktrees/per-user-agent-isolation && .venv/bin/python3 - <<'EOF'
 import requests
 from app.config import settings
 
@@ -311,7 +311,6 @@ from app.powabase_client import (
     create_knowledge_base,
     insert_agent_registry_row,
     link_agent_knowledge_base,
-    list_agent_registry_rows,
 )
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -344,7 +343,7 @@ def create_agent_route(req: CreateAgentRequest, user: AuthedUser = Depends(get_c
     return registry_row
 ```
 
-Note: this imports `list_agent_registry_rows`, which doesn't exist until Task 4. That's expected — Task 4 adds it right after. If running Task 3 in isolation, stub it out or do Task 4's Step 1 first.
+This file only has the `POST /agents` route for now — Task 4 adds the `GET /agents` route (and its `list_agent_registry_rows` import) to this same file.
 
 - [ ] **Step 3: Register the router in `app/main.py`**
 
@@ -372,12 +371,12 @@ app = create_app()
 - [ ] **Step 4: Start the server and verify `POST /agents`**
 
 ```bash
-cd /home/william/powabase-chatbot && .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/uvicorn.log 2>&1 &
+cd /home/william/powabase-chatbot/.claude/worktrees/per-user-agent-isolation && (nohup .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/uvicorn.log 2>&1 &)
 sleep 2
 ```
 
 ```bash
-cd /home/william/powabase-chatbot && .venv/bin/python3 - <<'EOF'
+cd /home/william/powabase-chatbot/.claude/worktrees/per-user-agent-isolation && .venv/bin/python3 - <<'EOF'
 import requests
 from app.config import settings
 
@@ -437,7 +436,7 @@ def list_agent_registry_rows(access_token: str) -> list:
 
 - [ ] **Step 2: Add the list route to `app/routes/agents.py`**
 
-Append to the file (the `list_agent_registry_rows` import is already there from Task 3 Step 2):
+Add `list_agent_registry_rows` to the existing `from app.powabase_client import (...)` block at the top of the file (alongside `create_agent`, `create_knowledge_base`, `insert_agent_registry_row`, `link_agent_knowledge_base`), then append the new route to the file:
 
 ```python
 @router.get("")
@@ -451,12 +450,12 @@ def list_agents_route(user: AuthedUser = Depends(get_current_user)):
 - [ ] **Step 3: Restart the server and verify**
 
 ```bash
-kill %1 2>/dev/null; cd /home/william/powabase-chatbot && .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/uvicorn.log 2>&1 &
+pkill -f "uvicorn app.main:app" 2>/dev/null; sleep 1; cd /home/william/powabase-chatbot/.claude/worktrees/per-user-agent-isolation && (nohup .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/uvicorn.log 2>&1 &)
 sleep 2
 ```
 
 ```bash
-cd /home/william/powabase-chatbot && .venv/bin/python3 - <<'EOF'
+cd /home/william/powabase-chatbot/.claude/worktrees/per-user-agent-isolation && .venv/bin/python3 - <<'EOF'
 import requests
 from app.config import settings
 
@@ -589,12 +588,12 @@ This removes the `KNOWLEDGE_BASE_ID` module-level constant entirely.
 - [ ] **Step 3: Restart the server and verify both the happy path and the ownership check**
 
 ```bash
-kill %1 2>/dev/null; cd /home/william/powabase-chatbot && .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/uvicorn.log 2>&1 &
+pkill -f "uvicorn app.main:app" 2>/dev/null; sleep 1; cd /home/william/powabase-chatbot/.claude/worktrees/per-user-agent-isolation && (nohup .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/uvicorn.log 2>&1 &)
 sleep 2
 ```
 
 ```bash
-cd /home/william/powabase-chatbot && .venv/bin/python3 - <<'EOF'
+cd /home/william/powabase-chatbot/.claude/worktrees/per-user-agent-isolation && .venv/bin/python3 - <<'EOF'
 import requests
 from app.config import settings
 
@@ -691,12 +690,12 @@ This removes the `AGENT_ID` module-level constant entirely.
 - [ ] **Step 2: Restart the server and verify both the happy path and the ownership check**
 
 ```bash
-kill %1 2>/dev/null; cd /home/william/powabase-chatbot && .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/uvicorn.log 2>&1 &
+pkill -f "uvicorn app.main:app" 2>/dev/null; sleep 1; cd /home/william/powabase-chatbot/.claude/worktrees/per-user-agent-isolation && (nohup .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/uvicorn.log 2>&1 &)
 sleep 2
 ```
 
 ```bash
-cd /home/william/powabase-chatbot && .venv/bin/python3 - <<'EOF'
+cd /home/william/powabase-chatbot/.claude/worktrees/per-user-agent-isolation && .venv/bin/python3 - <<'EOF'
 import requests
 from app.config import settings
 
@@ -856,7 +855,7 @@ if __name__ == "__main__":
 - [ ] **Step 2: Restart the server and run the sanity check**
 
 ```bash
-kill %1 2>/dev/null; cd /home/william/powabase-chatbot && .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/uvicorn.log 2>&1 &
+pkill -f "uvicorn app.main:app" 2>/dev/null; sleep 1; cd /home/william/powabase-chatbot/.claude/worktrees/per-user-agent-isolation && (nohup .venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8000 > /tmp/uvicorn.log 2>&1 &)
 sleep 2
 .venv/bin/python3 scripts/sanity_check.py
 ```
@@ -871,7 +870,7 @@ If a chat assertion fails (wrong fact appearing), check `/tmp/uvicorn.log` — t
 - [ ] **Step 3: Stop the background server**
 
 ```bash
-kill %1 2>/dev/null
+pkill -f "uvicorn app.main:app" 2>/dev/null
 ```
 
 - [ ] **Step 4: Commit**
