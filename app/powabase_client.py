@@ -172,3 +172,15 @@ def insert_agent_registry_row(access_token: str, user_id: str, agent_id: str, kb
     if isinstance(data, list):
         data = data[0] if data else {}
     return data, response.status_code
+
+
+def list_agent_registry_rows(access_token: str) -> list:
+    response = requests.get(
+        f"{settings.powabase_url}/rest/v1/agents_registry",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+        },
+        params={"select": "id,agent_id,name,created_at", "order": "created_at.desc"},
+    )
+    return response.json(), response.status_code

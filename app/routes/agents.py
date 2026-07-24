@@ -7,6 +7,7 @@ from app.powabase_client import (
     create_knowledge_base,
     insert_agent_registry_row,
     link_agent_knowledge_base,
+    list_agent_registry_rows,
 )
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -37,3 +38,11 @@ def create_agent_route(req: CreateAgentRequest, user: AuthedUser = Depends(get_c
     if status_code >= 400:
         raise HTTPException(status_code=status_code, detail=registry_row)
     return registry_row
+
+
+@router.get("")
+def list_agents_route(user: AuthedUser = Depends(get_current_user)):
+    data, status_code = list_agent_registry_rows(user.access_token)
+    if status_code >= 400:
+        raise HTTPException(status_code=status_code, detail=data)
+    return data
