@@ -102,3 +102,14 @@ def run_agent(agent_id: str, message: str) -> dict:
                 return {"error": event.get("message"), "code": event.get("code")}, 502
 
         return {"error": "stream ended without a complete event"}, 502
+
+
+def get_authenticated_user(access_token: str) -> dict:
+    response = requests.get(
+        f"{settings.powabase_url}/auth/v1/user",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+        },
+    )
+    return response.json(), response.status_code
