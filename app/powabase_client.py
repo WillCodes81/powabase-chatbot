@@ -174,6 +174,18 @@ def insert_agent_registry_row(access_token: str, user_id: str, agent_id: str, kb
     return data, response.status_code
 
 
+def get_agent_registry_entry(access_token: str, agent_id: str) -> list:
+    response = requests.get(
+        f"{settings.powabase_url}/rest/v1/agents_registry",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+        },
+        params={"agent_id": f"eq.{agent_id}", "select": "kb_id"},
+    )
+    return response.json(), response.status_code
+
+
 def list_agent_registry_rows(access_token: str) -> list:
     response = requests.get(
         f"{settings.powabase_url}/rest/v1/agents_registry",

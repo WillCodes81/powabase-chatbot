@@ -1,12 +1,11 @@
 import time
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
 
-from app.powabase_client import add_source_to_kb, get_source, upload_source
+from app.deps import AuthedUser, get_current_user
+from app.powabase_client import add_source_to_kb, get_agent_registry_entry, get_source, upload_source
 
 router = APIRouter(prefix="/ingest", tags=["ingest"])
-
-KNOWLEDGE_BASE_ID = "35ab71c9-a1e5-4034-a99c-c6eae2dd41b3"
 
 TERMINAL_EXTRACTION_STATUSES = {"extracted", "attention_required", "failed", "cancelled"}
 POLL_INTERVAL_SECONDS = 2
@@ -14,7 +13,21 @@ POLL_TIMEOUT_SECONDS = 120
 
 
 @router.post("/file")
-def ingest_file_route(file: UploadFile = File(...)):
+def ingest_file_route(
+    file: UploadFile = File(...),
+    agent_id_form: str | None = Form(default=None, alias="agent_id"),
+    agent_id_query: str | None = Query(default=None, alias="agent_id"),
+    user: AuthedUser = Depends(get_current_user),
+):
+    agent_id = agent_id_form or agent_id_query
+    if not agent_id:
+        raise HTTPException(status_code=422, detail="agent_id is required (form field or query param)")
+
+    registry_rows, status_code = get_agent_registry_entry(user.access_token, agent_id)
+    if status_code >= 400 or not registry_rows:
+        raise HTTPException(status_code=403, detail="Agent not found or not owned by this user")
+    kb_id = registry_rows[0]["kb_id"]
+
     file_bytes = file.file.read()
 
     data, status_code = upload_source(file_bytes, file.filename)
@@ -48,7 +61,7 @@ def ingest_file_route(file: UploadFile = File(...)):
             detail=f"Source extraction ended in status '{extraction_status}', cannot index",
         )
 
-    data, status_code = add_source_to_kb(KNOWLEDGE_BASE_ID, source_id)
+    data, status_code = add_source_to_kb(kb_id, source_id)
     if status_code >= 400:
         raise HTTPException(status_code=status_code, detail=data)
     return data
