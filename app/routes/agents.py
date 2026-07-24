@@ -1,0 +1,39 @@
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+
+from app.deps import AuthedUser, get_current_user
+from app.powabase_client import (
+    create_agent,
+    create_knowledge_base,
+    insert_agent_registry_row,
+    link_agent_knowledge_base,
+)
+
+router = APIRouter(prefix="/agents", tags=["agents"])
+
+
+class CreateAgentRequest(BaseModel):
+    name: str
+    system_prompt: str | None = None
+
+
+@router.post("")
+def create_agent_route(req: CreateAgentRequest, user: AuthedUser = Depends(get_current_user)):
+    kb_data, status_code = create_knowledge_base(f"{req.name}-{user.id}")
+    if status_code >= 400:
+        raise HTTPException(status_code=status_code, detail=kb_data)
+    kb_id = kb_data["id"]
+
+    agent_data, status_code = create_agent(req.name, req.system_prompt)
+    if status_code >= 400:
+        raise HTTPException(status_code=status_code, detail=agent_data)
+    agent_id = agent_data["id"]
+
+    _, status_code = link_agent_knowledge_base(agent_id, kb_id)
+    if status_code >= 400:
+        raise HTTPException(status_code=status_code, detail="Failed to link knowledge base to new agent")
+
+    registry_row, status_code = insert_agent_registry_row(user.access_token, user.id, agent_id, kb_id, req.name)
+    if status_code >= 400:
+        raise HTTPException(status_code=status_code, detail=registry_row)
+    return registry_row

@@ -113,3 +113,62 @@ def get_authenticated_user(access_token: str) -> dict:
         },
     )
     return response.json(), response.status_code
+
+
+def create_knowledge_base(name: str) -> dict:
+    response = requests.post(
+        f"{settings.powabase_url}/api/knowledge-bases",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+            "Content-Type": "application/json",
+        },
+        json={"name": name},
+    )
+    return response.json(), response.status_code
+
+
+def create_agent(name: str, system_prompt: str | None) -> dict:
+    body = {"name": name}
+    if system_prompt:
+        body["system_prompt"] = system_prompt
+    response = requests.post(
+        f"{settings.powabase_url}/api/agents",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+            "Content-Type": "application/json",
+        },
+        json=body,
+    )
+    return response.json(), response.status_code
+
+
+def link_agent_knowledge_base(agent_id: str, kb_id: str) -> dict:
+    response = requests.post(
+        f"{settings.powabase_url}/api/agents/{agent_id}/knowledge-bases",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+            "Content-Type": "application/json",
+        },
+        json={"knowledge_base_id": kb_id},
+    )
+    return response.json(), response.status_code
+
+
+def insert_agent_registry_row(access_token: str, user_id: str, agent_id: str, kb_id: str, name: str) -> dict:
+    response = requests.post(
+        f"{settings.powabase_url}/rest/v1/agents_registry",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation",
+        },
+        json={"user_id": user_id, "agent_id": agent_id, "kb_id": kb_id, "name": name},
+    )
+    data = response.json()
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    return data, response.status_code
