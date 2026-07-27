@@ -67,7 +67,13 @@ def add_source_to_kb(kb_id: str, source_id: str) -> dict:
     return response.json(), response.status_code
 
 
-def run_agent(agent_id: str, message: str) -> dict:
+def run_agent(agent_id: str, message: str, session_id: str | None = None, context_override: str | None = None) -> dict:
+    body = {"message": message}
+    if session_id:
+        body["session_id"] = session_id
+    if context_override:
+        body["context_override"] = context_override
+
     with requests.post(
         f"{settings.powabase_url}/api/agents/{agent_id}/run/stream",
         headers={
@@ -75,13 +81,13 @@ def run_agent(agent_id: str, message: str) -> dict:
             "Authorization": f"Bearer {settings.powabase_service_key}",
             "Content-Type": "application/json",
         },
-        json={"message": message},
+        json=body,
         stream=True,
     ) as response:
         if response.status_code >= 400:
             return response.json(), response.status_code
 
-        session_id = None
+        run_session_id = None
         for raw in response.iter_lines():
             if not raw:
                 continue
@@ -91,11 +97,11 @@ def run_agent(agent_id: str, message: str) -> dict:
             event = json.loads(line[6:])
             kind = event.get("event")
             if kind == "start":
-                session_id = event.get("session_id")
+                run_session_id = event.get("session_id")
             elif kind == "complete":
                 return {
                     "content": event["content"],
-                    "session_id": session_id,
+                    "session_id": run_session_id,
                     "usage": event.get("usage"),
                 }, 200
             elif kind == "error":
@@ -194,5 +200,61 @@ def list_agent_registry_rows(access_token: str) -> list:
             "Authorization": f"Bearer {access_token}",
         },
         params={"select": "id,agent_id,name,created_at", "order": "created_at.desc"},
+    )
+    return response.json(), response.status_code
+
+
+def get_session_messages(session_id: str) -> dict:
+    response = requests.get(
+        f"{settings.powabase_url}/api/sessions/{session_id}/messages",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+        },
+    )
+    return response.json(), response.status_code
+
+
+def insert_chat_session_row(access_token: str, user_id: str, agent_id: str, powabase_session_id: str, label: str | None) -> dict:
+    response = requests.post(
+        f"{settings.powabase_url}/rest/v1/chat_sessions",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation",
+        },
+        json={"user_id": user_id, "agent_id": agent_id, "powabase_session_id": powabase_session_id, "label": label},
+    )
+    data = response.json()
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    return data, response.status_code
+
+
+def get_chat_session_entry(access_token: str, agent_id: str, session_id: str) -> list:
+    response = requests.get(
+        f"{settings.powabase_url}/rest/v1/chat_sessions",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+        },
+        params={"agent_id": f"eq.{agent_id}", "powabase_session_id": f"eq.{session_id}", "select": "id,label,created_at"},
+    )
+    return response.json(), response.status_code
+
+
+def list_chat_sessions(access_token: str, agent_id: str) -> list:
+    response = requests.get(
+        f"{settings.powabase_url}/rest/v1/chat_sessions",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+        },
+        params={
+            "agent_id": f"eq.{agent_id}",
+            "select": "id,session_id:powabase_session_id,label,created_at",
+            "order": "created_at.desc",
+        },
     )
     return response.json(), response.status_code
