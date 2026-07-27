@@ -7,6 +7,7 @@ from app.powabase_client import (
     get_chat_session_entry,
     get_session_messages,
     insert_chat_session_row,
+    list_session_documents_text,
     run_agent,
 )
 
@@ -20,16 +21,21 @@ class ChatRequest(BaseModel):
     label: str | None = None
 
 
-def _build_context_override(session_id: str) -> str | None:
+def _build_context_override(access_token: str, agent_id: str, session_id: str) -> str | None:
+    parts = []
+
+    doc_rows, status_code = list_session_documents_text(access_token, agent_id, session_id)
+    if status_code < 400 and doc_rows:
+        docs_text = "\n\n".join(f'--- {row["filename"]} ---\n{row["extracted_text"]}' for row in doc_rows)
+        parts.append(f"[Documents attached to this session]\n{docs_text}")
+
     messages_data, status_code = get_session_messages(session_id)
-    if status_code >= 400:
-        return None
+    if status_code < 400:
+        transcript = "\n".join(f'{m["role"]}: {m["content"]}' for m in messages_data.get("messages", []))
+        if transcript:
+            parts.append(f"[Prior conversation in this session]\n{transcript}")
 
-    transcript = "\n".join(f'{m["role"]}: {m["content"]}' for m in messages_data.get("messages", []))
-    if not transcript:
-        return None
-
-    return f"[Prior conversation in this session]\n{transcript}"
+    return "\n\n".join(parts) if parts else None
 
 
 @router.post("/chat")
@@ -43,7 +49,7 @@ def chat_route(req: ChatRequest, user: AuthedUser = Depends(get_current_user)):
         session_rows, status_code = get_chat_session_entry(user.access_token, req.agent_id, req.session_id)
         if status_code >= 400 or not session_rows:
             raise HTTPException(status_code=403, detail="Session not found or not owned by this user for this agent")
-        context_override = _build_context_override(req.session_id)
+        context_override = _build_context_override(user.access_token, req.agent_id, req.session_id)
 
     data, status_code = run_agent(req.agent_id, req.message, session_id=req.session_id, context_override=context_override)
     if status_code >= 400:
