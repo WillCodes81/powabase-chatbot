@@ -1,9 +1,12 @@
+import time
+
 import requests
 
 from app.config import settings
 
 BASE = settings.powabase_url
 ANON = settings.powabase_anon_key
+SVC = settings.powabase_service_key
 APP = "http://127.0.0.1:8000"
 
 USER_A = {"email": "sanity-sessions-user-a@example.com", "password": "SanityTest123!"}
@@ -42,6 +45,22 @@ def chat(token, agent_id, message, session_id=None, label=None):
     return requests.post(f"{APP}/chat", headers={"Authorization": f"Bearer {token}"}, json=body)
 
 
+def wait_for_kb_indexed(kb_id, source_id, timeout=60):
+    elapsed = 0
+    while elapsed < timeout:
+        r = requests.get(f"{BASE}/api/knowledge-bases/{kb_id}/sources", headers={"apikey": SVC, "Authorization": f"Bearer {SVC}"})
+        r.raise_for_status()
+        items = r.json()["items"]
+        match = next((i for i in items if i["source_id"] == source_id), None)
+        if match and match["index_status"] == "indexed":
+            return
+        if match and match["index_status"] == "failed":
+            raise AssertionError(f"indexing failed for source {source_id}: {match}")
+        time.sleep(2)
+        elapsed += 2
+    raise AssertionError(f"timed out waiting for source {source_id} to index into kb {kb_id}")
+
+
 def main():
     token_a = signup_or_signin(USER_A)
     token_b = signup_or_signin(USER_B)
@@ -77,7 +96,10 @@ def main():
         files={"file": ("memo.txt", doc)},
     )
     assert r.status_code == 200, r.text
-    print("document attached ok")
+    kb_id = r.json()["kb_id"]
+    source_id = r.json()["source_id"]
+    print("document attached ok, kb_id:", kb_id)
+    wait_for_kb_indexed(kb_id, source_id)
 
     r = chat(token_a, agent_a["agent_id"], "What is the launch codename mentioned in the attached memo?", session_id=session_id)
     assert r.status_code == 200 and "PLUM-VORTEX-77" in r.json()["content"], r.text
