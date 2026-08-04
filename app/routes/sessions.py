@@ -4,13 +4,16 @@ from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 
 from app.deps import AuthedUser, get_current_user
 from app.powabase_client import (
+    add_source_to_kb,
+    create_knowledge_base,
+    delete_chat_session_row,
+    delete_knowledge_base,
     get_agent_registry_entry,
     get_chat_session_entry,
     get_session_messages,
     get_source,
-    get_source_text_derivative,
-    insert_session_document_row,
     list_chat_sessions,
+    update_chat_session_kb_id,
     upload_source,
 )
 
@@ -19,7 +22,6 @@ router = APIRouter(prefix="/agents", tags=["sessions"])
 TERMINAL_EXTRACTION_STATUSES = {"extracted", "attention_required", "failed", "cancelled"}
 POLL_INTERVAL_SECONDS = 2
 POLL_TIMEOUT_SECONDS = 120
-MAX_DOCUMENT_TOKENS = 6000
 
 
 @router.get("/{agent_id}/sessions")
@@ -65,6 +67,16 @@ def attach_document_route(
     if status_code >= 400 or not session_rows:
         raise HTTPException(status_code=404, detail="Session not found for this agent")
 
+    kb_id = session_rows[0].get("kb_id")
+    if not kb_id:
+        kb_data, status_code = create_knowledge_base(f"session-{session_id}")
+        if status_code >= 400:
+            raise HTTPException(status_code=status_code, detail=kb_data)
+        kb_id = kb_data["id"]
+        _, status_code = update_chat_session_kb_id(user.access_token, agent_id, session_id, kb_id)
+        if status_code >= 400:
+            raise HTTPException(status_code=status_code, detail="Failed to save session's knowledge base id")
+
     file_bytes = file.file.read()
 
     data, status_code = upload_source(file_bytes, file.filename)
@@ -95,29 +107,34 @@ def attach_document_route(
     if extraction_status != "extracted":
         raise HTTPException(
             status_code=422,
-            detail=f"Document extraction ended in status '{extraction_status}', cannot attach to session",
+            detail=f"Document extraction ended in status '{extraction_status}', cannot index",
         )
 
-    text, status_code = get_source_text_derivative(source_id)
+    index_data, status_code = add_source_to_kb(kb_id, source_id)
     if status_code >= 400:
-        raise HTTPException(status_code=status_code, detail=text)
+        raise HTTPException(status_code=status_code, detail=index_data)
 
-    token_estimate = len(text) // 4
-    if token_estimate > MAX_DOCUMENT_TOKENS:
-        raise HTTPException(
-            status_code=422,
-            detail=(
-                f"Document is too large to attach to a session: ~{token_estimate} estimated tokens "
-                f"(limit is {MAX_DOCUMENT_TOKENS} tokens, ~{MAX_DOCUMENT_TOKENS * 4} characters). "
-                "Use POST /ingest/file to add it to the agent's knowledge base instead."
-            ),
-        )
+    return {"kb_id": kb_id, "source_id": source_id, "filename": file.filename, **index_data}
 
-    row, status_code = insert_session_document_row(
-        user.access_token, user.id, agent_id, session_id, source_id, file.filename, text, token_estimate
-    )
+
+@router.delete("/{agent_id}/sessions/{session_id}")
+def delete_session_route(agent_id: str, session_id: str, user: AuthedUser = Depends(get_current_user)):
+    registry_rows, status_code = get_agent_registry_entry(user.access_token, agent_id)
+    if status_code >= 400 or not registry_rows:
+        raise HTTPException(status_code=403, detail="Agent not found or not owned by this user")
+
+    session_rows, status_code = get_chat_session_entry(user.access_token, agent_id, session_id)
+    if status_code >= 400 or not session_rows:
+        raise HTTPException(status_code=404, detail="Session not found for this agent")
+
+    kb_id = session_rows[0].get("kb_id")
+    if kb_id:
+        kb_result, status_code = delete_knowledge_base(kb_id)
+        if status_code >= 400:
+            raise HTTPException(status_code=status_code, detail=kb_result)
+
+    _, status_code = delete_chat_session_row(user.access_token, agent_id, session_id)
     if status_code >= 400:
-        raise HTTPException(status_code=status_code, detail=row)
+        raise HTTPException(status_code=status_code, detail="Failed to delete session")
 
-    row.pop("extracted_text", None)
-    return row
+    return {"deleted": True, "kb_deleted": bool(kb_id)}
