@@ -349,7 +349,7 @@ def get_session_messages(session_id: str) -> dict:
     return response.json(), response.status_code
 
 
-def insert_chat_session_row(access_token: str, user_id: str, agent_id: str, powabase_session_id: str, label: str | None) -> dict:
+def insert_chat_session_row(access_token: str, user_id: str, agent_id: str, powabase_session_id: str, label: str | None, session_token: str) -> dict:
     response = requests.post(
         f"{settings.powabase_url}/rest/v1/chat_sessions",
         headers={
@@ -358,7 +358,7 @@ def insert_chat_session_row(access_token: str, user_id: str, agent_id: str, powa
             "Content-Type": "application/json",
             "Prefer": "return=representation",
         },
-        json={"user_id": user_id, "agent_id": agent_id, "powabase_session_id": powabase_session_id, "label": label},
+        json={"user_id": user_id, "agent_id": agent_id, "powabase_session_id": powabase_session_id, "label": label, "session_token": session_token},
     )
     data = response.json()
     if isinstance(data, list):
@@ -373,9 +373,54 @@ def get_chat_session_entry(access_token: str, agent_id: str, session_id: str) ->
             "apikey": settings.powabase_anon_key,
             "Authorization": f"Bearer {access_token}",
         },
-        params={"agent_id": f"eq.{agent_id}", "powabase_session_id": f"eq.{session_id}", "select": "id,label,created_at"},
+        params={"agent_id": f"eq.{agent_id}", "powabase_session_id": f"eq.{session_id}", "select": "id,label,created_at,kb_id,session_token"},
     )
     return response.json(), response.status_code
+
+
+def update_chat_session_kb_id(access_token: str, agent_id: str, session_id: str, kb_id: str) -> tuple[dict, int]:
+    response = requests.patch(
+        f"{settings.powabase_url}/rest/v1/chat_sessions",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation",
+        },
+        params={"agent_id": f"eq.{agent_id}", "powabase_session_id": f"eq.{session_id}"},
+        json={"kb_id": kb_id},
+    )
+    data = response.json()
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    return data, response.status_code
+
+
+def delete_knowledge_base(kb_id: str) -> tuple[dict, int]:
+    response = requests.delete(
+        f"{settings.powabase_url}/api/knowledge-bases/{kb_id}",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+        },
+    )
+    return response.json(), response.status_code
+
+
+def delete_chat_session_row(access_token: str, agent_id: str, session_id: str) -> tuple[dict, int]:
+    response = requests.delete(
+        f"{settings.powabase_url}/rest/v1/chat_sessions",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+        },
+        params={"agent_id": f"eq.{agent_id}", "powabase_session_id": f"eq.{session_id}"},
+    )
+    # PostgREST DELETE with no Prefer header returns 204 with an empty body on
+    # success (verified live) -- only parse JSON on the error path.
+    if response.status_code >= 400:
+        return response.json(), response.status_code
+    return {}, response.status_code
 
 
 def list_chat_sessions(access_token: str, agent_id: str) -> list:
