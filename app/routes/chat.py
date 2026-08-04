@@ -1,3 +1,5 @@
+import secrets
+
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
@@ -7,7 +9,6 @@ from app.powabase_client import (
     get_chat_session_entry,
     get_session_messages,
     insert_chat_session_row,
-    list_session_documents_text,
     run_agent,
 )
 
@@ -21,13 +22,16 @@ class ChatRequest(BaseModel):
     label: str | None = None
 
 
-def _build_context_override(access_token: str, agent_id: str, session_id: str) -> str | None:
+def _build_context_override(session_id: str, session_token: str | None) -> str | None:
     parts = []
 
-    doc_rows, status_code = list_session_documents_text(access_token, agent_id, session_id)
-    if status_code < 400 and doc_rows:
-        docs_text = "\n\n".join(f'--- {row["filename"]} ---\n{row["extracted_text"]}' for row in doc_rows)
-        parts.append(f"[Documents attached to this session]\n{docs_text}")
+    if session_token:
+        parts.append(
+            "[Session tool context]\n"
+            f"Your session_token for the session_context_search tool in this conversation is: {session_token}\n"
+            "Always pass this exact value as the session_token argument when calling session_context_search. "
+            "Never invent, guess, or omit it."
+        )
 
     messages_data, status_code = get_session_messages(session_id)
     if status_code < 400:
@@ -49,14 +53,15 @@ def chat_route(req: ChatRequest, user: AuthedUser = Depends(get_current_user)):
         session_rows, status_code = get_chat_session_entry(user.access_token, req.agent_id, req.session_id)
         if status_code >= 400 or not session_rows:
             raise HTTPException(status_code=403, detail="Session not found or not owned by this user for this agent")
-        context_override = _build_context_override(user.access_token, req.agent_id, req.session_id)
+        context_override = _build_context_override(req.session_id, session_rows[0].get("session_token"))
 
     data, status_code = run_agent(req.agent_id, req.message, session_id=req.session_id, context_override=context_override)
     if status_code >= 400:
         raise HTTPException(status_code=status_code, detail=data)
 
     if not req.session_id:
-        registry_row, status_code = insert_chat_session_row(user.access_token, user.id, req.agent_id, data["session_id"], req.label)
+        session_token = secrets.token_urlsafe(32)
+        registry_row, status_code = insert_chat_session_row(user.access_token, user.id, req.agent_id, data["session_id"], req.label, session_token)
         if status_code >= 400:
             raise HTTPException(status_code=status_code, detail=registry_row)
 
