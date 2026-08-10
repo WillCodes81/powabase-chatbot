@@ -297,7 +297,15 @@ def get_chat_session_by_token(session_token: str) -> tuple[list, int]:
     return response.json(), response.status_code
 
 
-def insert_agent_registry_row(access_token: str, user_id: str, agent_id: str, kb_id: str, name: str) -> dict:
+def insert_agent_registry_row(
+    access_token: str,
+    user_id: str,
+    agent_id: str,
+    kb_id: str,
+    name: str,
+    chatbot_id: str | None = None,
+    orchestration_entity_id: str | None = None,
+) -> dict:
     response = requests.post(
         f"{settings.powabase_url}/rest/v1/agents_registry",
         headers={
@@ -306,7 +314,14 @@ def insert_agent_registry_row(access_token: str, user_id: str, agent_id: str, kb
             "Content-Type": "application/json",
             "Prefer": "return=representation",
         },
-        json={"user_id": user_id, "agent_id": agent_id, "kb_id": kb_id, "name": name},
+        json={
+            "user_id": user_id,
+            "agent_id": agent_id,
+            "kb_id": kb_id,
+            "name": name,
+            "chatbot_id": chatbot_id,
+            "orchestration_entity_id": orchestration_entity_id,
+        },
     )
     data = response.json()
     if isinstance(data, list):
@@ -435,5 +450,237 @@ def list_chat_sessions(access_token: str, agent_id: str) -> list:
             "select": "id,session_id:powabase_session_id,label,created_at",
             "order": "created_at.desc",
         },
+    )
+    return response.json(), response.status_code
+
+
+def create_orchestration(name: str, orchestrator_config: dict) -> dict:
+    response = requests.post(
+        f"{settings.powabase_url}/api/orchestrations",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+            "Content-Type": "application/json",
+        },
+        json={"name": name, "strategy": "supervisor", "orchestrator_config": orchestrator_config},
+    )
+    return response.json(), response.status_code
+
+
+def add_orchestration_entity(orchestration_id: str, agent_id: str, role_description: str) -> dict:
+    response = requests.post(
+        f"{settings.powabase_url}/api/orchestrations/{orchestration_id}/entities",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+            "Content-Type": "application/json",
+        },
+        json={"entity_type": "agent", "entity_ref_id": agent_id, "role_description": role_description},
+    )
+    return response.json(), response.status_code
+
+
+def remove_orchestration_entity(orchestration_id: str, entity_id: str) -> dict:
+    response = requests.delete(
+        f"{settings.powabase_url}/api/orchestrations/{orchestration_id}/entities/{entity_id}",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+        },
+    )
+    return response.json(), response.status_code
+
+
+def delete_orchestration(orchestration_id: str) -> dict:
+    response = requests.delete(
+        f"{settings.powabase_url}/api/orchestrations/{orchestration_id}",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+        },
+    )
+    return response.json(), response.status_code
+
+
+def delete_agent(agent_id: str) -> dict:
+    response = requests.delete(
+        f"{settings.powabase_url}/api/agents/{agent_id}",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+        },
+    )
+    return response.json(), response.status_code
+
+
+def run_orchestration(orchestration_id: str, message: str, session_id: str | None = None) -> dict:
+    body = {"message": message}
+    if session_id:
+        body["session_id"] = session_id
+
+    with requests.post(
+        f"{settings.powabase_url}/api/orchestrations/{orchestration_id}/run/stream",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+            "Content-Type": "application/json",
+        },
+        json=body,
+        stream=True,
+    ) as response:
+        if response.status_code >= 400:
+            return response.json(), response.status_code
+
+        run_session_id = None
+        for raw in response.iter_lines():
+            if not raw:
+                continue
+            line = raw.decode("utf-8")
+            if line.startswith(":") or not line.startswith("data: "):
+                continue
+            event = json.loads(line[6:])
+            kind = event.get("event")
+            if kind == "start":
+                run_session_id = event.get("session_id")
+            elif kind == "complete":
+                if event.get("status") == "failed":
+                    return {"error": event.get("error") or "orchestration run failed"}, 502
+                return {
+                    "content": event["content"],
+                    "session_id": run_session_id,
+                    "usage": event.get("usage"),
+                }, 200
+            elif kind == "error":
+                return {"error": event.get("message"), "code": event.get("code")}, 502
+
+        return {"error": "stream ended without a complete event"}, 502
+
+
+def insert_chatbot_row(access_token: str, user_id: str, orchestrator_id: str, name: str) -> dict:
+    response = requests.post(
+        f"{settings.powabase_url}/rest/v1/chatbots",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation",
+        },
+        json={"user_id": user_id, "orchestrator_id": orchestrator_id, "name": name},
+    )
+    data = response.json()
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    return data, response.status_code
+
+
+def list_chatbot_rows(access_token: str) -> list:
+    response = requests.get(
+        f"{settings.powabase_url}/rest/v1/chatbots",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+        },
+        params={"select": "id,orchestrator_id,name,created_at", "order": "created_at.desc"},
+    )
+    return response.json(), response.status_code
+
+
+def get_chatbot_entry(access_token: str, chatbot_id: str) -> list:
+    response = requests.get(
+        f"{settings.powabase_url}/rest/v1/chatbots",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+        },
+        params={"id": f"eq.{chatbot_id}", "select": "id,orchestrator_id,name,created_at"},
+    )
+    return response.json(), response.status_code
+
+
+def delete_chatbot_row(access_token: str, chatbot_id: str) -> tuple[dict, int]:
+    response = requests.delete(
+        f"{settings.powabase_url}/rest/v1/chatbots",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+        },
+        params={"id": f"eq.{chatbot_id}"},
+    )
+    if response.status_code >= 400:
+        return response.json(), response.status_code
+    return {}, response.status_code
+
+
+def list_chatbot_agent_rows(access_token: str, chatbot_id: str) -> list:
+    response = requests.get(
+        f"{settings.powabase_url}/rest/v1/agents_registry",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+        },
+        params={
+            "chatbot_id": f"eq.{chatbot_id}",
+            "select": "id,agent_id,kb_id,name,orchestration_entity_id,created_at",
+            "order": "created_at.asc",
+        },
+    )
+    return response.json(), response.status_code
+
+
+def get_chatbot_agent_entry(access_token: str, chatbot_id: str, agent_id: str) -> list:
+    response = requests.get(
+        f"{settings.powabase_url}/rest/v1/agents_registry",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+        },
+        params={
+            "chatbot_id": f"eq.{chatbot_id}",
+            "agent_id": f"eq.{agent_id}",
+            "select": "id,agent_id,kb_id,name,orchestration_entity_id,created_at",
+        },
+    )
+    return response.json(), response.status_code
+
+
+def delete_agent_registry_row(access_token: str, agent_id: str) -> tuple[dict, int]:
+    response = requests.delete(
+        f"{settings.powabase_url}/rest/v1/agents_registry",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+        },
+        params={"agent_id": f"eq.{agent_id}"},
+    )
+    if response.status_code >= 400:
+        return response.json(), response.status_code
+    return {}, response.status_code
+
+
+def insert_chatbot_session_row(access_token: str, user_id: str, chatbot_id: str, powabase_session_id: str, label: str | None) -> dict:
+    response = requests.post(
+        f"{settings.powabase_url}/rest/v1/chatbot_sessions",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation",
+        },
+        json={"user_id": user_id, "chatbot_id": chatbot_id, "powabase_session_id": powabase_session_id, "label": label},
+    )
+    data = response.json()
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    return data, response.status_code
+
+
+def get_chatbot_session_entry(access_token: str, chatbot_id: str, session_id: str) -> list:
+    response = requests.get(
+        f"{settings.powabase_url}/rest/v1/chatbot_sessions",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+        },
+        params={"chatbot_id": f"eq.{chatbot_id}", "powabase_session_id": f"eq.{session_id}", "select": "id,label,created_at"},
     )
     return response.json(), response.status_code
