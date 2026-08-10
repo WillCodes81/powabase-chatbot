@@ -348,7 +348,7 @@ def list_agent_registry_rows(access_token: str) -> list:
             "apikey": settings.powabase_anon_key,
             "Authorization": f"Bearer {access_token}",
         },
-        params={"select": "id,agent_id,name,created_at", "order": "created_at.desc"},
+        params={"select": "id,agent_id,name,created_at", "order": "created_at.desc", "chatbot_id": "is.null"},
     )
     return response.json(), response.status_code
 
