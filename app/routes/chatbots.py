@@ -224,3 +224,41 @@ def delete_chatbot_agent_route(chatbot_id: str, agent_id: str, user: AuthedUser 
         raise HTTPException(status_code=sc, detail="Failed to delete agent registry row")
 
     return {"deleted": True, "chatbot_deleted": False}
+
+
+@router.delete("/{chatbot_id}")
+def delete_chatbot_route(chatbot_id: str, user: AuthedUser = Depends(get_current_user)):
+    chatbot_rows, status_code = get_chatbot_entry(user.access_token, chatbot_id)
+    if status_code >= 400 or not chatbot_rows:
+        raise HTTPException(status_code=403, detail="Chatbot not found or not owned by this user")
+    orchestrator_id = chatbot_rows[0]["orchestrator_id"]
+
+    agent_rows, status_code = list_chatbot_agent_rows(user.access_token, chatbot_id)
+    if status_code >= 400:
+        raise HTTPException(status_code=status_code, detail=agent_rows)
+
+    _, sc = delete_orchestration(orchestrator_id)
+    if sc >= 400 and sc != 404:
+        raise HTTPException(status_code=sc, detail="Failed to delete orchestrator")
+
+    for row in agent_rows:
+        kb_id = row.get("kb_id")
+        if kb_id:
+            _, sc = delete_knowledge_base(kb_id)
+            if sc >= 400:
+                raise HTTPException(status_code=sc, detail=f"Failed to delete knowledge base for agent {row['agent_id']}")
+
+        _, sc = delete_agent(row["agent_id"])
+        if sc >= 400:
+            raise HTTPException(status_code=sc, detail=f"Failed to delete agent {row['agent_id']}")
+
+        _, sc = delete_agent_registry_row(user.access_token, row["agent_id"])
+        if sc >= 400:
+            raise HTTPException(status_code=sc, detail=f"Failed to delete registry row for agent {row['agent_id']}")
+
+    _, sc = delete_chatbot_row(user.access_token, chatbot_id)
+    if sc >= 400:
+        raise HTTPException(status_code=sc, detail="Failed to delete chatbot row")
+
+    return {"deleted": True, "agents_deleted": len(agent_rows)}
+
