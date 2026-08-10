@@ -17,12 +17,15 @@ from app.powabase_client import (
     ensure_session_context_tool,
     get_chatbot_agent_entry,
     get_chatbot_entry,
+    get_chatbot_session_entry,
     insert_agent_registry_row,
     insert_chatbot_row,
+    insert_chatbot_session_row,
     link_agent_knowledge_base,
     list_chatbot_agent_rows,
     list_chatbot_rows,
     remove_orchestration_entity,
+    run_orchestration,
 )
 
 router = APIRouter(prefix="/chatbots", tags=["chatbots"])
@@ -261,4 +264,34 @@ def delete_chatbot_route(chatbot_id: str, user: AuthedUser = Depends(get_current
         raise HTTPException(status_code=sc, detail="Failed to delete chatbot row")
 
     return {"deleted": True, "agents_deleted": len(agent_rows)}
+
+
+class ChatbotChatRequest(BaseModel):
+    message: str
+    session_id: str | None = None
+    label: str | None = None
+
+
+@router.post("/{chatbot_id}/chat")
+def chatbot_chat_route(chatbot_id: str, req: ChatbotChatRequest, user: AuthedUser = Depends(get_current_user)):
+    chatbot_rows, status_code = get_chatbot_entry(user.access_token, chatbot_id)
+    if status_code >= 400 or not chatbot_rows:
+        raise HTTPException(status_code=403, detail="Chatbot not found or not owned by this user")
+    orchestrator_id = chatbot_rows[0]["orchestrator_id"]
+
+    if req.session_id:
+        session_rows, status_code = get_chatbot_session_entry(user.access_token, chatbot_id, req.session_id)
+        if status_code >= 400 or not session_rows:
+            raise HTTPException(status_code=403, detail="Session not found or not owned by this user for this chatbot")
+
+    data, status_code = run_orchestration(orchestrator_id, req.message, session_id=req.session_id)
+    if status_code >= 400:
+        raise HTTPException(status_code=status_code, detail=data)
+
+    if not req.session_id:
+        _, status_code = insert_chatbot_session_row(user.access_token, user.id, chatbot_id, data["session_id"], req.label)
+        if status_code >= 400:
+            raise HTTPException(status_code=status_code, detail="Failed to save chat session")
+
+    return data
 
