@@ -115,3 +115,37 @@ def get_chatbot_route(chatbot_id: str, user: AuthedUser = Depends(get_current_us
         raise HTTPException(status_code=status_code, detail=agent_rows)
 
     return {**chatbot_rows[0], "agents": agent_rows}
+
+
+class AddAgentRequest(BaseModel):
+    name: str
+    role_description: str
+    system_prompt: str | None = None
+
+
+@router.post("/{chatbot_id}/agents")
+def add_chatbot_agent_route(chatbot_id: str, req: AddAgentRequest, user: AuthedUser = Depends(get_current_user)):
+    chatbot_rows, status_code = get_chatbot_entry(user.access_token, chatbot_id)
+    if status_code >= 400 or not chatbot_rows:
+        raise HTTPException(status_code=403, detail="Chatbot not found or not owned by this user")
+    orchestrator_id = chatbot_rows[0]["orchestrator_id"]
+
+    agent_id, kb_id = _create_subagent(req.name, req.system_prompt, user.id)
+
+    entity_data, status_code = add_orchestration_entity(orchestrator_id, agent_id, req.role_description)
+    if status_code >= 400:
+        raise HTTPException(status_code=status_code, detail=entity_data)
+    entity_id = entity_data["id"]
+
+    registry_row, status_code = insert_agent_registry_row(
+        user.access_token,
+        user.id,
+        agent_id,
+        kb_id,
+        req.name,
+        chatbot_id=chatbot_id,
+        orchestration_entity_id=entity_id,
+    )
+    if status_code >= 400:
+        raise HTTPException(status_code=status_code, detail=registry_row)
+    return registry_row
