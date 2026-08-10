@@ -9,13 +9,20 @@ from app.powabase_client import (
     create_agent,
     create_knowledge_base,
     create_orchestration,
+    delete_agent,
+    delete_agent_registry_row,
+    delete_chatbot_row,
+    delete_knowledge_base,
+    delete_orchestration,
     ensure_session_context_tool,
+    get_chatbot_agent_entry,
     get_chatbot_entry,
     insert_agent_registry_row,
     insert_chatbot_row,
     link_agent_knowledge_base,
     list_chatbot_agent_rows,
     list_chatbot_rows,
+    remove_orchestration_entity,
 )
 
 router = APIRouter(prefix="/chatbots", tags=["chatbots"])
@@ -149,3 +156,71 @@ def add_chatbot_agent_route(chatbot_id: str, req: AddAgentRequest, user: AuthedU
     if status_code >= 400:
         raise HTTPException(status_code=status_code, detail=registry_row)
     return registry_row
+
+
+@router.delete("/{chatbot_id}/agents/{agent_id}")
+def delete_chatbot_agent_route(chatbot_id: str, agent_id: str, user: AuthedUser = Depends(get_current_user)):
+    chatbot_rows, status_code = get_chatbot_entry(user.access_token, chatbot_id)
+    if status_code >= 400 or not chatbot_rows:
+        raise HTTPException(status_code=403, detail="Chatbot not found or not owned by this user")
+    orchestrator_id = chatbot_rows[0]["orchestrator_id"]
+
+    agent_rows, status_code = get_chatbot_agent_entry(user.access_token, chatbot_id, agent_id)
+    if status_code >= 400 or not agent_rows:
+        raise HTTPException(status_code=404, detail="Agent not found on this chatbot")
+    agent_row = agent_rows[0]
+
+    all_agents, status_code = list_chatbot_agent_rows(user.access_token, chatbot_id)
+    if status_code >= 400:
+        raise HTTPException(status_code=status_code, detail=all_agents)
+
+    if len(all_agents) == 1:
+        # Last agent on this chatbot: the whole orchestration must go too (mentor
+        # requirement -- never leave a zero-entity orchestrator alive).
+        _, sc = delete_orchestration(orchestrator_id)
+        if sc >= 400 and sc != 404:
+            raise HTTPException(status_code=sc, detail="Failed to delete orchestrator")
+
+        kb_id = agent_row.get("kb_id")
+        if kb_id:
+            _, sc = delete_knowledge_base(kb_id)
+            if sc >= 400:
+                raise HTTPException(status_code=sc, detail="Failed to delete agent's knowledge base")
+
+        _, sc = delete_agent(agent_id)
+        if sc >= 400:
+            raise HTTPException(status_code=sc, detail="Failed to delete agent")
+
+        _, sc = delete_agent_registry_row(user.access_token, agent_id)
+        if sc >= 400:
+            raise HTTPException(status_code=sc, detail="Failed to delete agent registry row")
+
+        _, sc = delete_chatbot_row(user.access_token, chatbot_id)
+        if sc >= 400:
+            raise HTTPException(status_code=sc, detail="Failed to delete chatbot row")
+
+        return {"deleted": True, "chatbot_deleted": True}
+
+    # Other agents remain: remove just this one's orchestration entity link, then
+    # the agent and its KB. The chatbot and orchestrator stay alive.
+    entity_id = agent_row.get("orchestration_entity_id")
+    if entity_id:
+        _, sc = remove_orchestration_entity(orchestrator_id, entity_id)
+        if sc >= 400 and sc != 404:
+            raise HTTPException(status_code=sc, detail="Failed to remove agent from orchestrator")
+
+    kb_id = agent_row.get("kb_id")
+    if kb_id:
+        _, sc = delete_knowledge_base(kb_id)
+        if sc >= 400:
+            raise HTTPException(status_code=sc, detail="Failed to delete agent's knowledge base")
+
+    _, sc = delete_agent(agent_id)
+    if sc >= 400:
+        raise HTTPException(status_code=sc, detail="Failed to delete agent")
+
+    _, sc = delete_agent_registry_row(user.access_token, agent_id)
+    if sc >= 400:
+        raise HTTPException(status_code=sc, detail="Failed to delete agent registry row")
+
+    return {"deleted": True, "chatbot_deleted": False}
