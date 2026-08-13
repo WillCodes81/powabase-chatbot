@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState, type ReactNode } from 'react';
+import { createContext, useContext, useState, type ReactNode } from 'react';
 import { signIn as signInApi, signUp as signUpApi } from '../api/auth';
 import { setAuthToken } from '../api/client';
 
@@ -19,22 +19,24 @@ interface StoredAuth {
   email: string;
 }
 
-export function AuthProvider({ children }: { children: ReactNode }) {
-  const [token, setToken] = useState<string | null>(null);
-  const [userEmail, setUserEmail] = useState<string | null>(null);
+function readStoredAuth(): StoredAuth | null {
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw) as StoredAuth;
+  } catch {
+    localStorage.removeItem(STORAGE_KEY);
+    return null;
+  }
+}
 
-  useEffect(() => {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    try {
-      const stored: StoredAuth = JSON.parse(raw);
-      setAuthToken(stored.token);
-      setToken(stored.token);
-      setUserEmail(stored.email);
-    } catch {
-      localStorage.removeItem(STORAGE_KEY);
-    }
-  }, []);
+export function AuthProvider({ children }: { children: ReactNode }) {
+  const [token, setToken] = useState<string | null>(() => {
+    const stored = readStoredAuth();
+    if (stored) setAuthToken(stored.token);
+    return stored?.token ?? null;
+  });
+  const [userEmail, setUserEmail] = useState<string | null>(() => readStoredAuth()?.email ?? null);
 
   function persist(newToken: string, email: string) {
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ token: newToken, email }));
