@@ -12,6 +12,7 @@ from app.powabase_client import (
     delete_agent,
     delete_agent_registry_row,
     delete_chatbot_row,
+    delete_chatbot_session_rows,
     delete_knowledge_base,
     delete_orchestration,
     ensure_session_context_tool,
@@ -228,6 +229,10 @@ def delete_chatbot_agent_route(chatbot_id: str, agent_id: str, user: AuthedUser 
         if sc >= 400:
             raise HTTPException(status_code=sc, detail="Failed to delete agent registry row")
 
+        _, sc = delete_chatbot_session_rows(user.access_token, chatbot_id)
+        if sc >= 400:
+            raise HTTPException(status_code=sc, detail="Failed to delete chatbot's session history")
+
         _, sc = delete_chatbot_row(user.access_token, chatbot_id)
         if sc >= 400:
             raise HTTPException(status_code=sc, detail="Failed to delete chatbot row")
@@ -288,6 +293,10 @@ def delete_chatbot_route(chatbot_id: str, user: AuthedUser = Depends(get_current
         _, sc = delete_agent_registry_row(user.access_token, row["agent_id"])
         if sc >= 400:
             raise HTTPException(status_code=sc, detail=f"Failed to delete registry row for agent {row['agent_id']}")
+
+    _, sc = delete_chatbot_session_rows(user.access_token, chatbot_id)
+    if sc >= 400:
+        raise HTTPException(status_code=sc, detail="Failed to delete chatbot's session history")
 
     _, sc = delete_chatbot_row(user.access_token, chatbot_id)
     if sc >= 400:

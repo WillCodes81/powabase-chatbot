@@ -700,3 +700,17 @@ def list_chatbot_sessions(access_token: str, chatbot_id: str) -> list:
         },
     )
     return response.json(), response.status_code
+
+
+def delete_chatbot_session_rows(access_token: str, chatbot_id: str) -> tuple[dict, int]:
+    response = requests.delete(
+        f"{settings.powabase_url}/rest/v1/chatbot_sessions",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+        },
+        params={"chatbot_id": f"eq.{chatbot_id}"},
+    )
+    if response.status_code >= 400:
+        return response.json(), response.status_code
+    return {}, response.status_code
