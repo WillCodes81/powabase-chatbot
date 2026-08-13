@@ -684,3 +684,19 @@ def get_chatbot_session_entry(access_token: str, chatbot_id: str, session_id: st
         params={"chatbot_id": f"eq.{chatbot_id}", "powabase_session_id": f"eq.{session_id}", "select": "id,label,created_at"},
     )
     return response.json(), response.status_code
+
+
+def list_chatbot_sessions(access_token: str, chatbot_id: str) -> list:
+    response = requests.get(
+        f"{settings.powabase_url}/rest/v1/chatbot_sessions",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+        },
+        params={
+            "chatbot_id": f"eq.{chatbot_id}",
+            "select": "id,session_id:powabase_session_id,label,created_at",
+            "order": "created_at.desc",
+        },
+    )
+    return response.json(), response.status_code

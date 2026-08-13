@@ -18,12 +18,14 @@ from app.powabase_client import (
     get_chatbot_agent_entry,
     get_chatbot_entry,
     get_chatbot_session_entry,
+    get_session_messages,
     insert_agent_registry_row,
     insert_chatbot_row,
     insert_chatbot_session_row,
     link_agent_knowledge_base,
     list_chatbot_agent_rows,
     list_chatbot_rows,
+    list_chatbot_sessions,
     remove_orchestration_entity,
     run_orchestration,
 )
@@ -125,6 +127,34 @@ def get_chatbot_route(chatbot_id: str, user: AuthedUser = Depends(get_current_us
         raise HTTPException(status_code=status_code, detail=agent_rows)
 
     return {**chatbot_rows[0], "agents": agent_rows}
+
+
+@router.get("/{chatbot_id}/sessions")
+def list_chatbot_sessions_route(chatbot_id: str, user: AuthedUser = Depends(get_current_user)):
+    chatbot_rows, status_code = get_chatbot_entry(user.access_token, chatbot_id)
+    if status_code >= 400 or not chatbot_rows:
+        raise HTTPException(status_code=403, detail="Chatbot not found or not owned by this user")
+
+    data, status_code = list_chatbot_sessions(user.access_token, chatbot_id)
+    if status_code >= 400:
+        raise HTTPException(status_code=status_code, detail=data)
+    return data
+
+
+@router.get("/{chatbot_id}/sessions/{session_id}/messages")
+def get_chatbot_session_messages_route(chatbot_id: str, session_id: str, user: AuthedUser = Depends(get_current_user)):
+    chatbot_rows, status_code = get_chatbot_entry(user.access_token, chatbot_id)
+    if status_code >= 400 or not chatbot_rows:
+        raise HTTPException(status_code=403, detail="Chatbot not found or not owned by this user")
+
+    session_rows, status_code = get_chatbot_session_entry(user.access_token, chatbot_id, session_id)
+    if status_code >= 400 or not session_rows:
+        raise HTTPException(status_code=404, detail="Session not found for this chatbot")
+
+    data, status_code = get_session_messages(session_id)
+    if status_code >= 400:
+        raise HTTPException(status_code=status_code, detail=data)
+    return data
 
 
 class AddAgentRequest(BaseModel):
