@@ -1,0 +1,18 @@
+.header {
+  margin-bottom: 24px;
+}
+.section {
+  margin-bottom: 32px;
+}
+.sectionHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.uploads {
+  display: flex;
+  gap: 24px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
