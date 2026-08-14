@@ -72,3 +72,13 @@
   padding: 32px;
   min-width: 0;
 }
+
+@media (max-width: 640px) {
+  .shell {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+  }
+}
