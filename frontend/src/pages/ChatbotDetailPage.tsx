@@ -17,6 +17,7 @@ import { ConfirmButton } from '../components/ConfirmButton';
 import { ErrorBanner } from '../components/ErrorBanner';
 import { Spinner } from '../components/Spinner';
 import { describeError } from '../lib/errors';
+import type { SessionSummary } from '../api/types';
 import styles from './ChatbotDetailPage.module.css';
 
 export function ChatbotDetailPage() {
@@ -33,6 +34,7 @@ export function ChatbotDetailPage() {
   const [systemPrompt, setSystemPrompt] = useState('');
   const [addAgentError, setAddAgentError] = useState<string | null>(null);
   const [addingAgent, setAddingAgent] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   async function handleAddAgent(e: FormEvent) {
     e.preventDefault();
@@ -53,17 +55,35 @@ export function ChatbotDetailPage() {
   }
 
   async function handleDeleteAgent(agentId: string) {
-    const result = await deleteChatbotAgent(chatbotId!, agentId);
-    if (result.chatbot_deleted) {
-      navigate('/', { replace: true });
-    } else {
-      chatbot.reload();
+    try {
+      const result = await deleteChatbotAgent(chatbotId!, agentId);
+      if (result.chatbot_deleted) {
+        navigate('/', { replace: true });
+      } else {
+        chatbot.reload();
+      }
+      setActionError(null);
+    } catch (err) {
+      setActionError(describeError(err));
     }
   }
 
   async function handleDeleteChatbot() {
-    await deleteChatbot(chatbotId!);
-    navigate('/', { replace: true });
+    try {
+      await deleteChatbot(chatbotId!);
+      navigate('/', { replace: true });
+    } catch (err) {
+      setActionError(describeError(err));
+    }
+  }
+
+  async function handleContinueSession(session: SessionSummary) {
+    try {
+      await conversation.continueSession(session);
+      setActionError(null);
+    } catch (err) {
+      setActionError(describeError(err));
+    }
   }
 
   if (chatbot.loading) return <Spinner />;
@@ -79,6 +99,8 @@ export function ChatbotDetailPage() {
         </div>
         <ConfirmButton label="Delete chatbot" confirmLabel="Confirm delete" onConfirm={handleDeleteChatbot} />
       </div>
+
+      {actionError && <ErrorBanner message={actionError} />}
 
       <section className={styles.section}>
         <div className={styles.sectionHeader}>
@@ -163,7 +185,7 @@ export function ChatbotDetailPage() {
           loading={sessions.loading}
           error={sessions.error}
           sessions={sessions.data}
-          onContinue={conversation.continueSession}
+          onContinue={handleContinueSession}
         />
       </section>
 

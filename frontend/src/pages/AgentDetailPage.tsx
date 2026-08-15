@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { listAgents } from '../api/agents';
 import { listSessions, getSessionMessages, deleteSession, attachDocumentToSession } from '../api/sessions';
@@ -10,6 +11,8 @@ import { SessionHistoryPanel } from '../components/SessionHistoryPanel';
 import { FileUploadButton } from '../components/FileUploadButton';
 import { ErrorBanner } from '../components/ErrorBanner';
 import { Spinner } from '../components/Spinner';
+import { describeError } from '../lib/errors';
+import type { SessionSummary } from '../api/types';
 import styles from './AgentDetailPage.module.css';
 
 export function AgentDetailPage() {
@@ -21,10 +24,26 @@ export function AgentDetailPage() {
   const sessions = useAsync(() => listSessions(agentId!), [agentId]);
   const conversation = useConversation((sessionId) => getSessionMessages(agentId!, sessionId));
 
+  const [actionError, setActionError] = useState<string | null>(null);
+
   async function handleDeleteSession(sessionId: string) {
-    await deleteSession(agentId!, sessionId);
-    sessions.reload();
-    if (conversation.activeSessionId === sessionId) conversation.clear();
+    try {
+      await deleteSession(agentId!, sessionId);
+      sessions.reload();
+      if (conversation.activeSessionId === sessionId) conversation.clear();
+      setActionError(null);
+    } catch (err) {
+      setActionError(describeError(err));
+    }
+  }
+
+  async function handleContinueSession(session: SessionSummary) {
+    try {
+      await conversation.continueSession(session);
+      setActionError(null);
+    } catch (err) {
+      setActionError(describeError(err));
+    }
   }
 
   if (agentsList.loading) return <Spinner />;
@@ -64,11 +83,12 @@ export function AgentDetailPage() {
             New chat
           </button>
         </div>
+        {actionError && <ErrorBanner message={actionError} />}
         <SessionHistoryPanel
           loading={sessions.loading}
           error={sessions.error}
           sessions={sessions.data}
-          onContinue={conversation.continueSession}
+          onContinue={handleContinueSession}
           onDelete={(session) => handleDeleteSession(session.session_id)}
         />
       </section>
