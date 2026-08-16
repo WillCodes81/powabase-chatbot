@@ -1,7 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app.deps import AuthedUser, get_current_user
+from app.rate_limit import limiter
 from app.powabase_client import (
     SESSION_CONTEXT_TOOL_NAME,
     add_orchestration_entity,
@@ -309,7 +310,8 @@ class ChatbotChatRequest(BaseModel):
 
 
 @router.post("/{chatbot_id}/chat")
-def chatbot_chat_route(chatbot_id: str, req: ChatbotChatRequest, user: AuthedUser = Depends(get_current_user)):
+@limiter.limit("20/minute")
+def chatbot_chat_route(chatbot_id: str, request: Request, req: ChatbotChatRequest, user: AuthedUser = Depends(get_current_user)):
     credits_row = ensure_user_credits_row(user.access_token, user.id)
     if credits_row["tokens_remaining"] <= 0:
         raise HTTPException(status_code=402, detail="Token balance exhausted. You have no tokens remaining.")
