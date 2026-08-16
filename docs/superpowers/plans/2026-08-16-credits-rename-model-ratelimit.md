@@ -35,7 +35,9 @@ This needs DDL access, which this project's `.env` doesn't have (no Database URL
 **Interfaces:**
 - Produces: `public.user_credits` (`user_id uuid primary key references auth.users`, `tokens_remaining integer not null default 50000`, `tokens_used_total integer not null default 0`, `created_at timestamptz not null default now()`), RLS enabled, 4 owner-scoped policies (same pattern as every other table). `public.deduct_credits(p_user_id uuid, p_tokens integer) returns setof public.user_credits` — an atomic `UPDATE ... SET tokens_remaining = tokens_remaining - p_tokens, tokens_used_total = tokens_used_total + p_tokens WHERE user_id = p_user_id RETURNING *`, callable at `/rest/v1/rpc/deduct_credits`. Task 2 consumes both.
 
-- [ ] **Step 1: Ask the user to run this SQL in the Powabase Studio SQL editor**
+- [x] **Step 1: Ask the user to run this SQL in the Powabase Studio SQL editor**
+
+Project → **Studio** → **SQL Editor**, paste and run. (Executed 2026-08-16: the first attempt with double-quoted policy names — `"user_credits_delete_own"` etc. — errored with `syntax error at or near "for"` on the delete policy, with nothing committed; the working theory is the chat UI's markdown rendering mangled a straight quote into a smart quote on copy, swallowing a semicolon. Unquoted policy identifiers below are what actually succeeded — kept as the plan's canonical version since it's strictly more robust to future copy-paste, not just a one-off fix.)
 
 Project → **Studio** → **SQL Editor**, paste and run:
 
@@ -49,16 +51,16 @@ create table public.user_credits (
 
 alter table public.user_credits enable row level security;
 
-create policy "user_credits_select_own" on public.user_credits
+create policy user_credits_select_own on public.user_credits
   for select to authenticated using (user_id = auth.uid());
 
-create policy "user_credits_insert_own" on public.user_credits
+create policy user_credits_insert_own on public.user_credits
   for insert to authenticated with check (user_id = auth.uid());
 
-create policy "user_credits_update_own" on public.user_credits
+create policy user_credits_update_own on public.user_credits
   for update to authenticated using (user_id = auth.uid()) with check (user_id = auth.uid());
 
-create policy "user_credits_delete_own" on public.user_credits
+create policy user_credits_delete_own on public.user_credits
   for delete to authenticated using (user_id = auth.uid());
 
 create or replace function public.deduct_credits(p_user_id uuid, p_tokens integer)
@@ -77,9 +79,9 @@ $$;
 notify pgrst, 'reload schema';
 ```
 
-Wait for the user to confirm they've run it before continuing to Step 2.
+Wait for the user to confirm they've run it before continuing to Step 2. (Confirmed 2026-08-16: "success. No rows returned".)
 
-- [ ] **Step 2: Verify the table, RLS, and RPC exist and behave correctly**
+- [x] **Step 2: Verify the table, RLS, and RPC exist and behave correctly**
 
 ```bash
 cd /home/william/powabase-chatbot && .venv/bin/python3 - <<'EOF'
@@ -136,9 +138,9 @@ print("\nSCHEMA + RPC VERIFIED")
 EOF
 ```
 
-Expected output ends with `SCHEMA + RPC VERIFIED`. If a query 404s, the schema cache hasn't reloaded — re-run `notify pgrst, 'reload schema';` and retry. If `deduct_credits` responds with a shape different from what's asserted above (e.g. not list-wrapped), note the actual shape here — Task 2's `deduct_user_credits` must match reality, not this guess.
+Expected output ends with `SCHEMA + RPC VERIFIED`. If a query 404s, the schema cache hasn't reloaded — re-run `notify pgrst, 'reload schema';` and retry. If `deduct_credits` responds with a shape different from what's asserted above (e.g. not list-wrapped), note the actual shape here — Task 2's `deduct_user_credits` must match reality, not this guess. (Ran 2026-08-16, output ended with `SCHEMA + RPC VERIFIED`. RPC response shape confirmed list-wrapped — `[{"user_id": ..., "tokens_remaining": 49877, "tokens_used_total": 123, "created_at": ...}]` — matching Task 2's planned unwrap logic exactly, no change needed there.)
 
-- [ ] **Step 3: Commit the plan's record of this manual step**
+- [x] **Step 3: Commit the plan's record of this manual step**
 
 No code changed in this task — nothing to commit. Proceed to Task 2.
 
