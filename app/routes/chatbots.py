@@ -9,12 +9,14 @@ from app.powabase_client import (
     create_agent,
     create_knowledge_base,
     create_orchestration,
+    deduct_user_credits,
     delete_agent,
     delete_agent_registry_row,
     delete_chatbot_row,
     delete_knowledge_base,
     delete_orchestration,
     ensure_session_context_tool,
+    ensure_user_credits_row,
     get_chatbot_agent_entry,
     get_chatbot_entry,
     get_chatbot_session_entry,
@@ -304,6 +306,10 @@ class ChatbotChatRequest(BaseModel):
 
 @router.post("/{chatbot_id}/chat")
 def chatbot_chat_route(chatbot_id: str, req: ChatbotChatRequest, user: AuthedUser = Depends(get_current_user)):
+    credits_row = ensure_user_credits_row(user.access_token, user.id)
+    if credits_row["tokens_remaining"] <= 0:
+        raise HTTPException(status_code=402, detail="Token balance exhausted. You have no tokens remaining.")
+
     chatbot_rows, status_code = get_chatbot_entry(user.access_token, chatbot_id)
     if status_code >= 400 or not chatbot_rows:
         raise HTTPException(status_code=403, detail="Chatbot not found or not owned by this user")
@@ -322,6 +328,13 @@ def chatbot_chat_route(chatbot_id: str, req: ChatbotChatRequest, user: AuthedUse
         _, status_code = insert_chatbot_session_row(user.access_token, user.id, chatbot_id, data["session_id"], req.label)
         if status_code >= 400:
             raise HTTPException(status_code=status_code, detail="Failed to save chat session")
+
+    usage = data.get("usage")
+    if usage and usage.get("total_tokens"):
+        try:
+            deduct_user_credits(user.access_token, user.id, usage["total_tokens"])
+        except Exception:
+            pass  # Best-effort bookkeeping -- never let a deduction failure cost the user their already-generated response.
 
     return data
 
