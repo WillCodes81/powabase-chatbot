@@ -548,12 +548,15 @@ def chat_route(req: ChatRequest, user: AuthedUser = Depends(get_current_user)):
 
     usage = data.get("usage")
     if usage and usage.get("total_tokens"):
-        deduct_user_credits(user.access_token, user.id, usage["total_tokens"])
+        try:
+            deduct_user_credits(user.access_token, user.id, usage["total_tokens"])
+        except Exception:
+            pass  # Best-effort bookkeeping -- never let a deduction failure cost the user their already-generated response.
 
     return data
 ```
 
-(A deduction failure -- e.g. the RPC call itself erroring -- is not raised as an HTTP error: the chat response the user already paid for in latency still returns. It's a best-effort bookkeeping step, not a gate.)
+(A deduction failure -- e.g. the RPC call itself erroring, timing out, or returning a malformed body -- is not raised as an HTTP error: the chat response the user already paid for in latency still returns. It's a best-effort bookkeeping step, not a gate. The `try/except` is load-bearing here, not decorative: `deduct_user_credits` has no internal error handling of its own — matching every other function in `powabase_client.py`, which lets `requests` exceptions propagate — so the guarantee has to live at this call site.)
 
 - [ ] **Step 2: Restart the server and verify the 402 gate and deduction end-to-end**
 
@@ -699,10 +702,15 @@ def chatbot_chat_route(chatbot_id: str, req: ChatbotChatRequest, user: AuthedUse
 
     usage = data.get("usage")
     if usage and usage.get("total_tokens"):
-        deduct_user_credits(user.access_token, user.id, usage["total_tokens"])
+        try:
+            deduct_user_credits(user.access_token, user.id, usage["total_tokens"])
+        except Exception:
+            pass  # Best-effort bookkeeping -- never let a deduction failure cost the user their already-generated response.
 
     return data
 ```
+
+(Same non-fatal-deduction guarantee as Task 4's `/chat` route, and for the same reason: `deduct_user_credits` has no internal error handling, matching every other `powabase_client.py` function, so the `try/except` has to live at this call site.)
 
 - [ ] **Step 2: Restart the server and verify the 402 gate and deduction end-to-end**
 

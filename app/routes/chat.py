@@ -73,6 +73,9 @@ def chat_route(req: ChatRequest, user: AuthedUser = Depends(get_current_user)):
 
     usage = data.get("usage")
     if usage and usage.get("total_tokens"):
-        deduct_user_credits(user.access_token, user.id, usage["total_tokens"])
+        try:
+            deduct_user_credits(user.access_token, user.id, usage["total_tokens"])
+        except Exception:
+            pass  # Best-effort bookkeeping -- never let a deduction failure cost the user their already-generated response.
 
     return data
