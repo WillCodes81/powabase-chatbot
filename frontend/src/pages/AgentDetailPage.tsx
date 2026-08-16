@@ -6,6 +6,7 @@ import { ingestFile } from '../api/ingest';
 import { chatWithAgent } from '../api/chat';
 import { useAsync } from '../hooks/useAsync';
 import { useConversation } from '../hooks/useConversation';
+import { useCredits } from '../context/CreditsContext';
 import { ChatPanel } from '../components/ChatPanel';
 import { SessionHistoryPanel } from '../components/SessionHistoryPanel';
 import { FileUploadButton } from '../components/FileUploadButton';
@@ -17,6 +18,7 @@ import styles from './AgentDetailPage.module.css';
 
 export function AgentDetailPage() {
   const { agentId } = useParams<{ agentId: string }>();
+  const credits = useCredits();
 
   const agentsList = useAsync(() => listAgents(), []);
   const agent = agentsList.data?.find((a) => a.agent_id === agentId);
@@ -105,6 +107,7 @@ export function AgentDetailPage() {
               conversation.onSessionStart(sessionId);
               sessions.reload();
             }}
+            onMessageSent={credits.reload}
           />
         </section>
       )}

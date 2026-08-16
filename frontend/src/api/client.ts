@@ -66,6 +66,7 @@ export const api = {
   get: <T,>(path: string, query?: Record<string, string | undefined>) =>
     request<T>(path, { method: 'GET', query }),
   post: <T,>(path: string, body?: unknown) => request<T>(path, { method: 'POST', body }),
+  patch: <T,>(path: string, body?: unknown) => request<T>(path, { method: 'PATCH', body }),
   postForm: <T,>(path: string, formData: FormData, query?: Record<string, string | undefined>) =>
     request<T>(path, { method: 'POST', body: formData, isFormData: true, query }),
   del: <T,>(path: string) => request<T>(path, { method: 'DELETE' }),

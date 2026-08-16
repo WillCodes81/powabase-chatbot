@@ -37,6 +37,27 @@
   flex: 1;
 }
 
+.credits {
+  border-top: 1px solid var(--color-border);
+  padding: 12px 10px;
+  margin-bottom: 4px;
+}
+
+.creditsLabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+  margin: 0 0 2px;
+}
+
+.creditsValue {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  color: var(--color-accent);
+  margin: 0;
+}
+
 .navLink, .navLinkActive {
   padding: 8px 10px;
   border-radius: var(--radius);

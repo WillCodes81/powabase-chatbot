@@ -13,6 +13,7 @@ interface ChatPanelProps {
   initialSessionId?: string | null;
   sendMessage: (message: string, sessionId: string | null) => Promise<ChatResult>;
   onSessionStart?: (sessionId: string) => void;
+  onMessageSent?: () => void;
 }
 
 export function ChatPanel({
@@ -20,6 +21,7 @@ export function ChatPanel({
   initialSessionId = null,
   sendMessage,
   onSessionStart,
+  onMessageSent,
 }: ChatPanelProps) {
   const [messages, setMessages] = useState<DisplayMessage[]>(
     initialMessages.map((m) => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: m.content })),
@@ -45,6 +47,7 @@ export function ChatPanel({
         setSessionId(result.session_id);
         onSessionStart?.(result.session_id);
       }
+      onMessageSent?.();
     } catch (err) {
       setError(describeError(err));
     } finally {

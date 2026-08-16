@@ -11,6 +11,7 @@ import {
 } from '../api/chatbots';
 import { useAsync } from '../hooks/useAsync';
 import { useConversation } from '../hooks/useConversation';
+import { useCredits } from '../context/CreditsContext';
 import { ChatPanel } from '../components/ChatPanel';
 import { SessionHistoryPanel } from '../components/SessionHistoryPanel';
 import { ConfirmButton } from '../components/ConfirmButton';
@@ -23,6 +24,7 @@ import styles from './ChatbotDetailPage.module.css';
 export function ChatbotDetailPage() {
   const { chatbotId } = useParams<{ chatbotId: string }>();
   const navigate = useNavigate();
+  const credits = useCredits();
 
   const chatbot = useAsync(() => getChatbot(chatbotId!), [chatbotId]);
   const sessions = useAsync(() => listChatbotSessions(chatbotId!), [chatbotId]);
@@ -201,6 +203,7 @@ export function ChatbotDetailPage() {
               conversation.onSessionStart(sessionId);
               sessions.reload();
             }}
+            onMessageSent={credits.reload}
           />
         </section>
       )}

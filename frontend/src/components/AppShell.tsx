@@ -1,8 +1,20 @@
 import { NavLink, Outlet } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
+import { CreditsProvider, useCredits } from '../context/CreditsContext';
 import styles from './AppShell.module.css';
 
-export function AppShell() {
+function CreditsDisplay() {
+  const { credits } = useCredits();
+  if (!credits) return null;
+  return (
+    <div className={styles.credits}>
+      <p className={styles.creditsLabel}>Tokens remaining</p>
+      <p className={styles.creditsValue}>{credits.tokens_remaining.toLocaleString()}</p>
+    </div>
+  );
+}
+
+function AppShellLayout() {
   const { userEmail, signOut } = useAuth();
 
   return (
@@ -17,6 +29,7 @@ export function AppShell() {
             Dashboard
           </NavLink>
         </nav>
+        <CreditsDisplay />
         <div className={styles.account}>
           {userEmail && <span className={styles.email}>{userEmail}</span>}
           <button type="button" className="btn btn-ghost" onClick={signOut}>
@@ -28,5 +41,13 @@ export function AppShell() {
         <Outlet />
       </main>
     </div>
+  );
+}
+
+export function AppShell() {
+  return (
+    <CreditsProvider>
+      <AppShellLayout />
+    </CreditsProvider>
   );
 }

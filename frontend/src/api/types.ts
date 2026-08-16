@@ -83,3 +83,8 @@ export interface AttachDocumentResult {
   filename: string;
   [key: string]: unknown;
 }
+
+export interface CreditsSummary {
+  tokens_remaining: number;
+  tokens_used_total: number;
+}
