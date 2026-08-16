@@ -774,3 +774,75 @@ def deduct_user_credits(access_token: str, user_id: str, tokens: int) -> tuple[d
     if isinstance(data, list):
         data = data[0] if data else {}
     return data, response.status_code
+
+
+def update_agent_registry_name(access_token: str, agent_id: str, name: str) -> tuple[dict, int]:
+    response = requests.patch(
+        f"{settings.powabase_url}/rest/v1/agents_registry",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation",
+        },
+        params={"agent_id": f"eq.{agent_id}"},
+        json={"name": name},
+    )
+    data = response.json()
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    return data, response.status_code
+
+
+def update_chatbot_name(access_token: str, chatbot_id: str, name: str) -> tuple[dict, int]:
+    response = requests.patch(
+        f"{settings.powabase_url}/rest/v1/chatbots",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation",
+        },
+        params={"id": f"eq.{chatbot_id}"},
+        json={"name": name},
+    )
+    data = response.json()
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    return data, response.status_code
+
+
+def update_chat_session_label(access_token: str, agent_id: str, session_id: str, label: str) -> tuple[dict, int]:
+    response = requests.patch(
+        f"{settings.powabase_url}/rest/v1/chat_sessions",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation",
+        },
+        params={"agent_id": f"eq.{agent_id}", "powabase_session_id": f"eq.{session_id}"},
+        json={"label": label},
+    )
+    data = response.json()
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    return data, response.status_code
+
+
+def update_chatbot_session_label(access_token: str, chatbot_id: str, session_id: str, label: str) -> tuple[dict, int]:
+    response = requests.patch(
+        f"{settings.powabase_url}/rest/v1/chatbot_sessions",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation",
+        },
+        params={"chatbot_id": f"eq.{chatbot_id}", "powabase_session_id": f"eq.{session_id}"},
+        json={"label": label},
+    )
+    data = response.json()
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    return data, response.status_code
