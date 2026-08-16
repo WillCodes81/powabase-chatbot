@@ -67,6 +67,17 @@ def add_source_to_kb(kb_id: str, source_id: str) -> dict:
     return response.json(), response.status_code
 
 
+def get_agent_run(run_id: str) -> tuple[dict, int]:
+    response = requests.get(
+        f"{settings.powabase_url}/api/agents/runs/{run_id}",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+        },
+    )
+    return response.json(), response.status_code
+
+
 def run_agent(agent_id: str, message: str, session_id: str | None = None, context_override: str | None = None) -> dict:
     body = {"message": message}
     if session_id:
@@ -88,6 +99,7 @@ def run_agent(agent_id: str, message: str, session_id: str | None = None, contex
             return response.json(), response.status_code
 
         run_session_id = None
+        run_id = None
         for raw in response.iter_lines():
             if not raw:
                 continue
@@ -98,11 +110,20 @@ def run_agent(agent_id: str, message: str, session_id: str | None = None, contex
             kind = event.get("event")
             if kind == "start":
                 run_session_id = event.get("session_id")
+                run_id = event.get("run_id")
             elif kind == "complete":
+                usage = event.get("usage")
+                if usage is None and run_id:
+                    # Verified live 2026-08-16: the standalone-agent /run/stream
+                    # complete event never carries usage (unlike orchestration
+                    # runs) -- the token counts only exist on the run record.
+                    run_data, run_status = get_agent_run(run_id)
+                    if run_status < 400:
+                        usage = run_data.get("usage")
                 return {
                     "content": event["content"],
                     "session_id": run_session_id,
-                    "usage": event.get("usage"),
+                    "usage": usage,
                 }, 200
             elif kind == "error":
                 return {"error": event.get("message"), "code": event.get("code")}, 502
@@ -700,3 +721,56 @@ def list_chatbot_sessions(access_token: str, chatbot_id: str) -> list:
         },
     )
     return response.json(), response.status_code
+
+
+def get_user_credits(access_token: str) -> tuple[list, int]:
+    response = requests.get(
+        f"{settings.powabase_url}/rest/v1/user_credits",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+        },
+        params={"select": "user_id,tokens_remaining,tokens_used_total,created_at"},
+    )
+    return response.json(), response.status_code
+
+
+def ensure_user_credits_row(access_token: str, user_id: str) -> dict:
+    existing, status_code = get_user_credits(access_token)
+    if status_code < 400 and existing:
+        return existing[0]
+
+    response = requests.post(
+        f"{settings.powabase_url}/rest/v1/user_credits",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+            "Prefer": "resolution=ignore-duplicates,return=representation",
+        },
+        json={"user_id": user_id},
+    )
+    data = response.json()
+    if isinstance(data, list) and data:
+        return data[0]
+
+    # A concurrent request created the row first (or ignore-duplicates
+    # returned no representation for the no-op) -- re-select.
+    existing, status_code = get_user_credits(access_token)
+    return existing[0]
+
+
+def deduct_user_credits(access_token: str, user_id: str, tokens: int) -> tuple[dict, int]:
+    response = requests.post(
+        f"{settings.powabase_url}/rest/v1/rpc/deduct_credits",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        },
+        json={"p_user_id": user_id, "p_tokens": tokens},
+    )
+    data = response.json()
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    return data, response.status_code
