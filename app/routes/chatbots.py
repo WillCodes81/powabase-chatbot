@@ -52,16 +52,17 @@ class CreateChatbotRequest(BaseModel):
     agent_name: str
     role_description: str
     system_prompt: str | None = None
+    model: str | None = None
 
 
-def _create_subagent(name: str, system_prompt: str | None, user_id: str) -> tuple[str, str]:
+def _create_subagent(name: str, system_prompt: str | None, user_id: str, model: str | None = None) -> tuple[str, str]:
     """Agent + its own isolated KB + session-context tool -- same recipe as POST /agents."""
     kb_data, status_code = create_knowledge_base(f"{name}-{user_id}")
     if status_code >= 400:
         raise HTTPException(status_code=status_code, detail=kb_data)
     kb_id = kb_data["id"]
 
-    agent_data, status_code = create_agent(name, system_prompt)
+    agent_data, status_code = create_agent(name, system_prompt, model)
     if status_code >= 400:
         raise HTTPException(status_code=status_code, detail=agent_data)
     agent_id = agent_data["id"]
@@ -80,7 +81,7 @@ def _create_subagent(name: str, system_prompt: str | None, user_id: str) -> tupl
 
 @router.post("")
 def create_chatbot_route(req: CreateChatbotRequest, user: AuthedUser = Depends(get_current_user)):
-    agent_id, kb_id = _create_subagent(req.agent_name, req.system_prompt, user.id)
+    agent_id, kb_id = _create_subagent(req.agent_name, req.system_prompt, user.id, req.model)
 
     orch_data, status_code = create_orchestration(req.name, {"additional_instructions": ORCHESTRATOR_SYSTEM_PROMPT})
     if status_code >= 400:
@@ -165,6 +166,7 @@ class AddAgentRequest(BaseModel):
     name: str
     role_description: str
     system_prompt: str | None = None
+    model: str | None = None
 
 
 @router.post("/{chatbot_id}/agents")
@@ -174,7 +176,7 @@ def add_chatbot_agent_route(chatbot_id: str, req: AddAgentRequest, user: AuthedU
         raise HTTPException(status_code=403, detail="Chatbot not found or not owned by this user")
     orchestrator_id = chatbot_rows[0]["orchestrator_id"]
 
-    agent_id, kb_id = _create_subagent(req.name, req.system_prompt, user.id)
+    agent_id, kb_id = _create_subagent(req.name, req.system_prompt, user.id, req.model)
 
     entity_data, status_code = add_orchestration_entity(orchestrator_id, agent_id, req.role_description)
     if status_code >= 400:

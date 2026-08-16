@@ -21,6 +21,7 @@ router = APIRouter(prefix="/agents", tags=["agents"])
 class CreateAgentRequest(BaseModel):
     name: str
     system_prompt: str | None = None
+    model: str | None = None
 
 
 @router.post("")
@@ -30,7 +31,7 @@ def create_agent_route(req: CreateAgentRequest, user: AuthedUser = Depends(get_c
         raise HTTPException(status_code=status_code, detail=kb_data)
     kb_id = kb_data["id"]
 
-    agent_data, status_code = create_agent(req.name, req.system_prompt)
+    agent_data, status_code = create_agent(req.name, req.system_prompt, req.model)
     if status_code >= 400:
         raise HTTPException(status_code=status_code, detail=agent_data)
     agent_id = agent_data["id"]

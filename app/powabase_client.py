@@ -155,10 +155,12 @@ def create_knowledge_base(name: str) -> dict:
     return response.json(), response.status_code
 
 
-def create_agent(name: str, system_prompt: str | None) -> dict:
+def create_agent(name: str, system_prompt: str | None, model: str | None = None) -> dict:
     body = {"name": name}
     if system_prompt:
         body["system_prompt"] = system_prompt
+    if model:
+        body["model"] = model
     response = requests.post(
         f"{settings.powabase_url}/api/agents",
         headers={
