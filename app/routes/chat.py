@@ -5,6 +5,8 @@ from pydantic import BaseModel
 
 from app.deps import AuthedUser, get_current_user
 from app.powabase_client import (
+    deduct_user_credits,
+    ensure_user_credits_row,
     get_agent_registry_entry,
     get_chat_session_entry,
     get_session_messages,
@@ -44,6 +46,10 @@ def _build_context_override(session_id: str, session_token: str | None) -> str |
 
 @router.post("/chat")
 def chat_route(req: ChatRequest, user: AuthedUser = Depends(get_current_user)):
+    credits_row = ensure_user_credits_row(user.access_token, user.id)
+    if credits_row["tokens_remaining"] <= 0:
+        raise HTTPException(status_code=402, detail="Token balance exhausted. You have no tokens remaining.")
+
     registry_rows, status_code = get_agent_registry_entry(user.access_token, req.agent_id)
     if status_code >= 400 or not registry_rows:
         raise HTTPException(status_code=403, detail="Agent not found or not owned by this user")
@@ -64,5 +70,9 @@ def chat_route(req: ChatRequest, user: AuthedUser = Depends(get_current_user)):
         registry_row, status_code = insert_chat_session_row(user.access_token, user.id, req.agent_id, data["session_id"], req.label, session_token)
         if status_code >= 400:
             raise HTTPException(status_code=status_code, detail=registry_row)
+
+    usage = data.get("usage")
+    if usage and usage.get("total_tokens"):
+        deduct_user_credits(user.access_token, user.id, usage["total_tokens"])
 
     return data
