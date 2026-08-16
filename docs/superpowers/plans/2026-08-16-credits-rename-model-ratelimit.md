@@ -15,6 +15,7 @@
 - **`user_credits` rows are created lazily (on first need — chat or `GET /me/credits`), not on signup.** Tradeoff considered: creating the row at signup (via a Postgres trigger on `auth.users` insert, since the app never sees a "user created" webhook) guarantees every user has exactly one row from day one, but (a) needs a trigger function as extra DDL beyond what every other table in this project needs, and (b) does nothing for the users who already exist in this project today — they'd still need a one-off backfill script. Lazy creation via `ensure_user_credits_row` needs no trigger, no backfill, and naturally covers both existing and future users the first time they touch anything credit-related. The cost is that `GET /me/credits` and both chat routes each need to call `ensure_user_credits_row` instead of a plain read — a minor, already-idiomatic addition (see Task 2).
 - Keep the `(data, status_code)` tuple return pattern for every function in `app/powabase_client.py`, exactly like every existing function in that file.
 - `/api/*` calls use the **Service Role key** for both `apikey` and `Authorization` (existing pattern, unchanged). `/rest/v1/{table}` calls (including RPC) use `apikey: <Anon key>` + `Authorization: Bearer <the calling user's own access token>` — RLS enforces per-user scoping, same pattern as every existing table in this project.
+- **Verified live on 2026-08-16, re-confirmed 2026-08-16 with a 2-subagent orchestration run: the `complete`/`orchestration_completed` event's `usage` is the only complete total — per-agent breakdowns exist but are not a substitute.** The stream also emits a `delegation_completed` event per subagent call, each carrying its own `usage` (e.g. `{"total_tokens": 70}` and `{"total_tokens": 67}` for two delegated calls in one run). Summing just those two gives 137 — but the same run's `complete` event reported `total_tokens: 1156`. The gap is the **coordinator's own LLM usage** (routing/reasoning/tool-calling), which never appears in any per-delegation event, only in the run-level aggregate. So `delegation_completed` usage is real but strictly partial; summing it would silently undercharge users by the coordinator's overhead (88% of the total in this test). The plan's design — read `usage` off the final `complete` event — was already using the one place the full, correct total exists; this is confirmed, not an estimate anywhere, and no task changes as a result of this check.
 - **Verified live on 2026-08-16, critical for Feature 1:** `run_agent()`'s SSE `complete` event has **no `usage` key at all** — `event.get("usage")` is always `None` for a standalone-agent run. The real token counts only exist on the separate run record (`GET /api/agents/runs/{run_id}`), fetched via the `run_id` the `start` event carries (not currently captured — only `session_id` is). By contrast, `run_orchestration()`'s `complete` event **does** carry a populated `usage` object directly — confirmed with a real 2-agent orchestration run producing `{"prompt_tokens": 674, "completion_tokens": 34, ..., "total_tokens": 708}`. Task 2 fixes `run_agent()`; `run_orchestration()` needs no change.
 - **Verified live on 2026-08-16, Feature 3:** `POST /api/agents` / `PATCH /api/agents/{id}` accept `model` as a free-form LiteLLM model ID — there is no fixed enum anywhere in the platform. This project has no BYOK provider keys configured (`GET /api/ai-provider-keys` → `[]`) but has AI-on-us for `anthropic`, `google`, `openai` (`GET /api/ai-provider-keys/platform_supported`). `gpt-4o`, `claude-sonnet-4-6`, and `gemini/gemini-2.5-flash` were each created and run end-to-end successfully on this project. Default model when omitted is `gpt-5.4-mini`. Orchestration create silently drops a top-level `model` (verified, and out of scope — only agent-level model selection was requested).
 - This repo has **no `requirements.txt` or other dependency manifest** — packages are installed straight into `.venv` (confirmed: `pip list` shows only what's actually imported, no lockfile anywhere in the repo). Installing `slowapi` in Task 10 follows this same convention; don't introduce a manifest file as a side effect of this plan.
@@ -1505,12 +1506,32 @@ live = requests.get(f"{BASE}/api/agents/{agent_id}", headers=SVC_H).json()
 print("agent model on Powabase's own record:", live.get("model"))
 assert live.get("model") == "claude-sonnet-4-6"
 
-# POST /agents with no model -> Powabase's own default, not overridden
+# POST /agents with no model -> must behave IDENTICALLY to before this task existed,
+# not just "some default gets applied". Verify three ways: (1) the request body our
+# own code now sends is byte-identical to the pre-Task-9 body (no model key at all,
+# not model: null or model: ""), (2) the resulting agent's resolved model matches an
+# agent created by literally replaying the pre-Task-9 request shape directly against
+# Powabase (bypassing our app entirely), and (3) it matches every agent already living
+# in this project from before this plan, which never set model.
 r = requests.post(f"{APP}/agents", headers=H, json={"name": "Task9 Default Agent"})
 agent_id2 = r.json()["agent_id"]
 live2 = requests.get(f"{BASE}/api/agents/{agent_id2}", headers=SVC_H).json()
-print("agent model when omitted (should be Powabase's default):", live2.get("model"))
+print("agent model when omitted via our API:", live2.get("model"))
 assert live2.get("model")
+
+# (2) Replay the exact pre-Task-9 request body directly against Powabase, no model key.
+r3 = requests.post(f"{BASE}/api/agents", headers=SVC_H, json={"name": "Task9 Pre-Change-Equivalent Agent"})
+live3 = r3.json()
+print("agent model via literal pre-Task-9-shaped request:", live3.get("model"))
+assert live3.get("model") == live2.get("model"), "omitting model must resolve identically to the pre-existing (no-model-field-ever) request shape"
+
+# (3) Cross-check against agents already in this project from before this plan existed.
+existing = requests.get(f"{BASE}/api/agents", headers=SVC_H, params={"limit": 10}).json().get("agents", [])
+pre_existing_models = {a["model"] for a in existing if a["id"] not in (agent_id, agent_id2, live3["id"])}
+print("models on agents already in this project:", pre_existing_models)
+assert live2.get("model") in pre_existing_models, "the omitted-model default must match what every pre-existing agent already resolved to"
+
+requests.delete(f"{BASE}/api/agents/{live3['id']}", headers=SVC_H)
 
 # POST /chatbots applies model to the first agent
 r = requests.post(f"{APP}/chatbots", headers=H, json={
