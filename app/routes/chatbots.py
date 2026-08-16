@@ -30,6 +30,8 @@ from app.powabase_client import (
     list_chatbot_sessions,
     remove_orchestration_entity,
     run_orchestration,
+    update_chatbot_name,
+    update_chatbot_session_label,
 )
 
 router = APIRouter(prefix="/chatbots", tags=["chatbots"])
@@ -338,3 +340,38 @@ def chatbot_chat_route(chatbot_id: str, req: ChatbotChatRequest, user: AuthedUse
 
     return data
 
+
+class UpdateChatbotRequest(BaseModel):
+    name: str
+
+
+@router.patch("/{chatbot_id}")
+def update_chatbot_route(chatbot_id: str, req: UpdateChatbotRequest, user: AuthedUser = Depends(get_current_user)):
+    chatbot_rows, status_code = get_chatbot_entry(user.access_token, chatbot_id)
+    if status_code >= 400 or not chatbot_rows:
+        raise HTTPException(status_code=403, detail="Chatbot not found or not owned by this user")
+
+    data, status_code = update_chatbot_name(user.access_token, chatbot_id, req.name)
+    if status_code >= 400:
+        raise HTTPException(status_code=status_code, detail=data)
+    return data
+
+
+class UpdateChatbotSessionRequest(BaseModel):
+    label: str
+
+
+@router.patch("/{chatbot_id}/sessions/{session_id}")
+def update_chatbot_session_route(chatbot_id: str, session_id: str, req: UpdateChatbotSessionRequest, user: AuthedUser = Depends(get_current_user)):
+    chatbot_rows, status_code = get_chatbot_entry(user.access_token, chatbot_id)
+    if status_code >= 400 or not chatbot_rows:
+        raise HTTPException(status_code=403, detail="Chatbot not found or not owned by this user")
+
+    session_rows, status_code = get_chatbot_session_entry(user.access_token, chatbot_id, session_id)
+    if status_code >= 400 or not session_rows:
+        raise HTTPException(status_code=404, detail="Session not found for this chatbot")
+
+    data, status_code = update_chatbot_session_label(user.access_token, chatbot_id, session_id, req.label)
+    if status_code >= 400:
+        raise HTTPException(status_code=status_code, detail=data)
+    return data
