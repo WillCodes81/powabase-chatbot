@@ -1,6 +1,7 @@
 import time
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from pydantic import BaseModel
 
 from app.deps import AuthedUser, get_current_user
 from app.powabase_client import (
@@ -14,6 +15,7 @@ from app.powabase_client import (
     get_source,
     list_chat_sessions,
     update_chat_session_kb_id,
+    update_chat_session_label,
     upload_source,
 )
 
@@ -138,3 +140,23 @@ def delete_session_route(agent_id: str, session_id: str, user: AuthedUser = Depe
         raise HTTPException(status_code=status_code, detail="Failed to delete session")
 
     return {"deleted": True, "kb_deleted": bool(kb_id)}
+
+
+class UpdateSessionRequest(BaseModel):
+    label: str
+
+
+@router.patch("/{agent_id}/sessions/{session_id}")
+def update_session_route(agent_id: str, session_id: str, req: UpdateSessionRequest, user: AuthedUser = Depends(get_current_user)):
+    registry_rows, status_code = get_agent_registry_entry(user.access_token, agent_id)
+    if status_code >= 400 or not registry_rows:
+        raise HTTPException(status_code=403, detail="Agent not found or not owned by this user")
+
+    session_rows, status_code = get_chat_session_entry(user.access_token, agent_id, session_id)
+    if status_code >= 400 or not session_rows:
+        raise HTTPException(status_code=404, detail="Session not found for this agent")
+
+    data, status_code = update_chat_session_label(user.access_token, agent_id, session_id, req.label)
+    if status_code >= 400:
+        raise HTTPException(status_code=status_code, detail=data)
+    return data

@@ -8,9 +8,11 @@ from app.powabase_client import (
     create_agent,
     create_knowledge_base,
     ensure_session_context_tool,
+    get_agent_registry_entry,
     insert_agent_registry_row,
     link_agent_knowledge_base,
     list_agent_registry_rows,
+    update_agent_registry_name,
 )
 
 router = APIRouter(prefix="/agents", tags=["agents"])
@@ -51,6 +53,22 @@ def create_agent_route(req: CreateAgentRequest, user: AuthedUser = Depends(get_c
 @router.get("")
 def list_agents_route(user: AuthedUser = Depends(get_current_user)):
     data, status_code = list_agent_registry_rows(user.access_token)
+    if status_code >= 400:
+        raise HTTPException(status_code=status_code, detail=data)
+    return data
+
+
+class UpdateAgentRequest(BaseModel):
+    name: str
+
+
+@router.patch("/{agent_id}")
+def update_agent_route(agent_id: str, req: UpdateAgentRequest, user: AuthedUser = Depends(get_current_user)):
+    registry_rows, status_code = get_agent_registry_entry(user.access_token, agent_id)
+    if status_code >= 400 or not registry_rows:
+        raise HTTPException(status_code=403, detail="Agent not found or not owned by this user")
+
+    data, status_code = update_agent_registry_name(user.access_token, agent_id, req.name)
     if status_code >= 400:
         raise HTTPException(status_code=status_code, detail=data)
     return data
