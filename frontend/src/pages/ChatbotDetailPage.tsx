@@ -8,6 +8,7 @@ import {
   chatWithChatbot,
   listChatbotSessions,
   getChatbotSessionMessages,
+  updateChatbotSessionLabel,
 } from '../api/chatbots';
 import { useAsync } from '../hooks/useAsync';
 import { useConversation } from '../hooks/useConversation';
@@ -86,6 +87,11 @@ export function ChatbotDetailPage() {
     } catch (err) {
       setActionError(describeError(err));
     }
+  }
+
+  async function handleRenameSession(session: SessionSummary, newLabel: string) {
+    await updateChatbotSessionLabel(chatbotId!, session.session_id, newLabel);
+    sessions.reload();
   }
 
   if (chatbot.loading) return <Spinner />;
@@ -188,6 +194,7 @@ export function ChatbotDetailPage() {
           error={sessions.error}
           sessions={sessions.data}
           onContinue={handleContinueSession}
+          onRename={handleRenameSession}
         />
       </section>
 

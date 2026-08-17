@@ -33,7 +33,7 @@ export function DashboardPage() {
         {!agents.loading && !agents.error && agents.data && agents.data.length > 0 && (
           <div className={styles.grid}>
             {agents.data.map((agent) => (
-              <AgentCard key={agent.id} agent={agent} />
+              <AgentCard key={agent.id} agent={agent} onRenamed={agents.reload} />
             ))}
           </div>
         )}
@@ -57,7 +57,7 @@ export function DashboardPage() {
         {!chatbots.loading && !chatbots.error && chatbots.data && chatbots.data.length > 0 && (
           <div className={styles.grid}>
             {chatbots.data.map((chatbot) => (
-              <ChatbotCard key={chatbot.id} chatbot={chatbot} />
+              <ChatbotCard key={chatbot.id} chatbot={chatbot} onRenamed={chatbots.reload} />
             ))}
           </div>
         )}

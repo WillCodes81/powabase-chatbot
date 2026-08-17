@@ -18,3 +18,10 @@ export function attachDocumentToSession(agentId: string, sessionId: string, file
   formData.append('file', file);
   return api.postForm<AttachDocumentResult>(`/agents/${agentId}/sessions/${sessionId}/attach-document`, formData);
 }
+
+export function updateSessionLabel(agentId: string, sessionId: string, label: string) {
+  return api.patch<{ id: string; label: string | null; created_at: string }>(
+    `/agents/${agentId}/sessions/${sessionId}`,
+    { label },
+  );
+}

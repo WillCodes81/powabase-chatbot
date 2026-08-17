@@ -1,5 +1,6 @@
 import type { SessionSummary } from '../api/types';
 import { ConfirmButton } from './ConfirmButton';
+import { EditableName } from './EditableName';
 import { EmptyState } from './EmptyState';
 import { ErrorBanner } from './ErrorBanner';
 import { Spinner } from './Spinner';
@@ -11,9 +12,10 @@ interface SessionHistoryPanelProps {
   sessions: SessionSummary[] | null;
   onContinue: (session: SessionSummary) => void;
   onDelete?: (session: SessionSummary) => void;
+  onRename?: (session: SessionSummary, newLabel: string) => Promise<void>;
 }
 
-export function SessionHistoryPanel({ loading, error, sessions, onContinue, onDelete }: SessionHistoryPanelProps) {
+export function SessionHistoryPanel({ loading, error, sessions, onContinue, onDelete, onRename }: SessionHistoryPanelProps) {
   if (loading) return <Spinner />;
   if (error) return <ErrorBanner message={error} />;
   if (!sessions || sessions.length === 0) {
@@ -25,7 +27,13 @@ export function SessionHistoryPanel({ loading, error, sessions, onContinue, onDe
       {sessions.map((session) => (
         <li key={session.id} className={styles.row}>
           <div>
-            <p className={styles.label}>{session.label || 'Untitled session'}</p>
+            <p className={styles.label}>
+              {onRename ? (
+                <EditableName value={session.label || 'Untitled session'} onSave={(newLabel) => onRename(session, newLabel)} />
+              ) : (
+                session.label || 'Untitled session'
+              )}
+            </p>
             <p className="mono">{new Date(session.created_at).toLocaleString()}</p>
           </div>
           <div className={styles.actions}>

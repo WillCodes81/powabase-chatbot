@@ -58,3 +58,14 @@ export function listChatbotSessions(chatbotId: string) {
 export function getChatbotSessionMessages(chatbotId: string, sessionId: string) {
   return api.get<{ messages: SessionMessage[] }>(`/chatbots/${chatbotId}/sessions/${sessionId}/messages`);
 }
+
+export function updateChatbotName(chatbotId: string, name: string) {
+  return api.patch<ChatbotSummary & { user_id: string }>(`/chatbots/${chatbotId}`, { name });
+}
+
+export function updateChatbotSessionLabel(chatbotId: string, sessionId: string, label: string) {
+  return api.patch<{ id: string; label: string | null; created_at: string }>(
+    `/chatbots/${chatbotId}/sessions/${sessionId}`,
+    { label },
+  );
+}

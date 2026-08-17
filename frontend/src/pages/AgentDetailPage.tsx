@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useParams } from 'react-router-dom';
 import { listAgents } from '../api/agents';
-import { listSessions, getSessionMessages, deleteSession, attachDocumentToSession } from '../api/sessions';
+import { listSessions, getSessionMessages, deleteSession, attachDocumentToSession, updateSessionLabel } from '../api/sessions';
 import { ingestFile } from '../api/ingest';
 import { chatWithAgent } from '../api/chat';
 import { useAsync } from '../hooks/useAsync';
@@ -48,6 +48,11 @@ export function AgentDetailPage() {
     }
   }
 
+  async function handleRenameSession(session: SessionSummary, newLabel: string) {
+    await updateSessionLabel(agentId!, session.session_id, newLabel);
+    sessions.reload();
+  }
+
   if (agentsList.loading) return <Spinner />;
   if (agentsList.error) return <ErrorBanner message={agentsList.error} />;
   if (!agent) return <ErrorBanner message="Agent not found." />;
@@ -92,6 +97,7 @@ export function AgentDetailPage() {
           sessions={sessions.data}
           onContinue={handleContinueSession}
           onDelete={(session) => handleDeleteSession(session.session_id)}
+          onRename={handleRenameSession}
         />
       </section>
 

@@ -8,3 +8,7 @@ export function listAgents() {
 export function createAgent(name: string, systemPrompt?: string) {
   return api.post<AgentCreated>('/agents', { name, system_prompt: systemPrompt });
 }
+
+export function updateAgentName(agentId: string, name: string) {
+  return api.patch<AgentCreated>(`/agents/${agentId}`, { name });
+}
