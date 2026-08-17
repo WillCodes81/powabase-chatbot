@@ -1,7 +1,9 @@
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
+from app.credit_lock import deduct_credits_logged, user_credit_lock
 from app.deps import AuthedUser, get_current_user
+from app.ownership import get_owned_chatbot, get_owned_chatbot_session
 from app.rate_limit import limiter
 from app.powabase_client import (
     SESSION_CONTEXT_TOOL_NAME,
@@ -10,7 +12,6 @@ from app.powabase_client import (
     create_agent,
     create_knowledge_base,
     create_orchestration,
-    deduct_user_credits,
     delete_agent,
     delete_agent_registry_row,
     delete_chatbot_row,
@@ -20,7 +21,6 @@ from app.powabase_client import (
     ensure_session_context_tool,
     ensure_user_credits_row,
     get_chatbot_agent_entry,
-    get_chatbot_entry,
     get_chatbot_session_entry,
     get_session_messages,
     insert_agent_registry_row,
@@ -35,6 +35,7 @@ from app.powabase_client import (
     update_chatbot_name,
     update_chatbot_session_label,
 )
+from app.validation import NonEmptyStr
 
 router = APIRouter(prefix="/chatbots", tags=["chatbots"])
 
@@ -50,9 +51,9 @@ ORCHESTRATOR_SYSTEM_PROMPT = (
 
 
 class CreateChatbotRequest(BaseModel):
-    name: str
-    agent_name: str
-    role_description: str
+    name: NonEmptyStr
+    agent_name: NonEmptyStr
+    role_description: NonEmptyStr
     system_prompt: str | None = None
     model: str | None = None
 
@@ -124,24 +125,16 @@ def list_chatbots_route(user: AuthedUser = Depends(get_current_user)):
 
 
 @router.get("/{chatbot_id}")
-def get_chatbot_route(chatbot_id: str, user: AuthedUser = Depends(get_current_user)):
-    chatbot_rows, status_code = get_chatbot_entry(user.access_token, chatbot_id)
-    if status_code >= 400 or not chatbot_rows:
-        raise HTTPException(status_code=403, detail="Chatbot not found or not owned by this user")
-
+def get_chatbot_route(chatbot_id: str, user: AuthedUser = Depends(get_current_user), chatbot: dict = Depends(get_owned_chatbot)):
     agent_rows, status_code = list_chatbot_agent_rows(user.access_token, chatbot_id)
     if status_code >= 400:
         raise HTTPException(status_code=status_code, detail=agent_rows)
 
-    return {**chatbot_rows[0], "agents": agent_rows}
+    return {**chatbot, "agents": agent_rows}
 
 
 @router.get("/{chatbot_id}/sessions")
-def list_chatbot_sessions_route(chatbot_id: str, user: AuthedUser = Depends(get_current_user)):
-    chatbot_rows, status_code = get_chatbot_entry(user.access_token, chatbot_id)
-    if status_code >= 400 or not chatbot_rows:
-        raise HTTPException(status_code=403, detail="Chatbot not found or not owned by this user")
-
+def list_chatbot_sessions_route(chatbot_id: str, user: AuthedUser = Depends(get_current_user), chatbot: dict = Depends(get_owned_chatbot)):
     data, status_code = list_chatbot_sessions(user.access_token, chatbot_id)
     if status_code >= 400:
         raise HTTPException(status_code=status_code, detail=data)
@@ -149,15 +142,7 @@ def list_chatbot_sessions_route(chatbot_id: str, user: AuthedUser = Depends(get_
 
 
 @router.get("/{chatbot_id}/sessions/{session_id}/messages")
-def get_chatbot_session_messages_route(chatbot_id: str, session_id: str, user: AuthedUser = Depends(get_current_user)):
-    chatbot_rows, status_code = get_chatbot_entry(user.access_token, chatbot_id)
-    if status_code >= 400 or not chatbot_rows:
-        raise HTTPException(status_code=403, detail="Chatbot not found or not owned by this user")
-
-    session_rows, status_code = get_chatbot_session_entry(user.access_token, chatbot_id, session_id)
-    if status_code >= 400 or not session_rows:
-        raise HTTPException(status_code=404, detail="Session not found for this chatbot")
-
+def get_chatbot_session_messages_route(chatbot_id: str, session_id: str, session: dict = Depends(get_owned_chatbot_session)):
     data, status_code = get_session_messages(session_id)
     if status_code >= 400:
         raise HTTPException(status_code=status_code, detail=data)
@@ -165,18 +150,15 @@ def get_chatbot_session_messages_route(chatbot_id: str, session_id: str, user: A
 
 
 class AddAgentRequest(BaseModel):
-    name: str
-    role_description: str
+    name: NonEmptyStr
+    role_description: NonEmptyStr
     system_prompt: str | None = None
     model: str | None = None
 
 
 @router.post("/{chatbot_id}/agents")
-def add_chatbot_agent_route(chatbot_id: str, req: AddAgentRequest, user: AuthedUser = Depends(get_current_user)):
-    chatbot_rows, status_code = get_chatbot_entry(user.access_token, chatbot_id)
-    if status_code >= 400 or not chatbot_rows:
-        raise HTTPException(status_code=403, detail="Chatbot not found or not owned by this user")
-    orchestrator_id = chatbot_rows[0]["orchestrator_id"]
+def add_chatbot_agent_route(chatbot_id: str, req: AddAgentRequest, user: AuthedUser = Depends(get_current_user), chatbot: dict = Depends(get_owned_chatbot)):
+    orchestrator_id = chatbot["orchestrator_id"]
 
     agent_id, kb_id = _create_subagent(req.name, req.system_prompt, user.id, req.model)
 
@@ -200,11 +182,8 @@ def add_chatbot_agent_route(chatbot_id: str, req: AddAgentRequest, user: AuthedU
 
 
 @router.delete("/{chatbot_id}/agents/{agent_id}")
-def delete_chatbot_agent_route(chatbot_id: str, agent_id: str, user: AuthedUser = Depends(get_current_user)):
-    chatbot_rows, status_code = get_chatbot_entry(user.access_token, chatbot_id)
-    if status_code >= 400 or not chatbot_rows:
-        raise HTTPException(status_code=403, detail="Chatbot not found or not owned by this user")
-    orchestrator_id = chatbot_rows[0]["orchestrator_id"]
+def delete_chatbot_agent_route(chatbot_id: str, agent_id: str, user: AuthedUser = Depends(get_current_user), chatbot: dict = Depends(get_owned_chatbot)):
+    orchestrator_id = chatbot["orchestrator_id"]
 
     agent_rows, status_code = get_chatbot_agent_entry(user.access_token, chatbot_id, agent_id)
     if status_code >= 400 or not agent_rows:
@@ -272,11 +251,8 @@ def delete_chatbot_agent_route(chatbot_id: str, agent_id: str, user: AuthedUser 
 
 
 @router.delete("/{chatbot_id}")
-def delete_chatbot_route(chatbot_id: str, user: AuthedUser = Depends(get_current_user)):
-    chatbot_rows, status_code = get_chatbot_entry(user.access_token, chatbot_id)
-    if status_code >= 400 or not chatbot_rows:
-        raise HTTPException(status_code=403, detail="Chatbot not found or not owned by this user")
-    orchestrator_id = chatbot_rows[0]["orchestrator_id"]
+def delete_chatbot_route(chatbot_id: str, user: AuthedUser = Depends(get_current_user), chatbot: dict = Depends(get_owned_chatbot)):
+    orchestrator_id = chatbot["orchestrator_id"]
 
     agent_rows, status_code = list_chatbot_agent_rows(user.access_token, chatbot_id)
     if status_code >= 400:
@@ -320,50 +296,51 @@ class ChatbotChatRequest(BaseModel):
 
 @router.post("/{chatbot_id}/chat")
 @limiter.limit("20/minute")
-def chatbot_chat_route(chatbot_id: str, request: Request, req: ChatbotChatRequest, user: AuthedUser = Depends(get_current_user)):
-    credits_row = ensure_user_credits_row(user.access_token, user.id)
-    if credits_row["tokens_remaining"] <= 0:
-        raise HTTPException(status_code=402, detail="Token balance exhausted. You have no tokens remaining.")
+def chatbot_chat_route(
+    chatbot_id: str,
+    request: Request,
+    req: ChatbotChatRequest,
+    user: AuthedUser = Depends(get_current_user),
+    chatbot: dict = Depends(get_owned_chatbot),
+):
+    orchestrator_id = chatbot["orchestrator_id"]
 
-    chatbot_rows, status_code = get_chatbot_entry(user.access_token, chatbot_id)
-    if status_code >= 400 or not chatbot_rows:
-        raise HTTPException(status_code=403, detail="Chatbot not found or not owned by this user")
-    orchestrator_id = chatbot_rows[0]["orchestrator_id"]
-
+    # session_id is optional and comes from the request body, not the URL
+    # path, so it can't be resolved via a path-param-based dependency the
+    # way chatbot ownership above is -- stays a manual, conditional check.
     if req.session_id:
         session_rows, status_code = get_chatbot_session_entry(user.access_token, chatbot_id, req.session_id)
         if status_code >= 400 or not session_rows:
             raise HTTPException(status_code=403, detail="Session not found or not owned by this user for this chatbot")
 
-    data, status_code = run_orchestration(orchestrator_id, req.message, session_id=req.session_id)
-    if status_code >= 400:
-        raise HTTPException(status_code=status_code, detail=data)
+    # See chat.py's chat_route for why this whole span is locked per-user.
+    with user_credit_lock(user.id):
+        credits_row = ensure_user_credits_row(user.access_token, user.id)
+        if credits_row["tokens_remaining"] <= 0:
+            raise HTTPException(status_code=402, detail="Token balance exhausted. You have no tokens remaining.")
 
-    if not req.session_id:
-        _, status_code = insert_chatbot_session_row(user.access_token, user.id, chatbot_id, data["session_id"], req.label)
+        data, status_code = run_orchestration(orchestrator_id, req.message, session_id=req.session_id)
         if status_code >= 400:
-            raise HTTPException(status_code=status_code, detail="Failed to save chat session")
+            raise HTTPException(status_code=status_code, detail=data)
 
-    usage = data.get("usage")
-    if usage and usage.get("total_tokens"):
-        try:
-            deduct_user_credits(user.access_token, user.id, usage["total_tokens"])
-        except Exception:
-            pass  # Best-effort bookkeeping -- never let a deduction failure cost the user their already-generated response.
+        if not req.session_id:
+            _, status_code = insert_chatbot_session_row(user.access_token, user.id, chatbot_id, data["session_id"], req.label)
+            if status_code >= 400:
+                raise HTTPException(status_code=status_code, detail="Failed to save chat session")
+
+        usage = data.get("usage")
+        if usage and usage.get("total_tokens"):
+            deduct_credits_logged(user.access_token, user.id, usage["total_tokens"])
 
     return data
 
 
 class UpdateChatbotRequest(BaseModel):
-    name: str
+    name: NonEmptyStr
 
 
 @router.patch("/{chatbot_id}")
-def update_chatbot_route(chatbot_id: str, req: UpdateChatbotRequest, user: AuthedUser = Depends(get_current_user)):
-    chatbot_rows, status_code = get_chatbot_entry(user.access_token, chatbot_id)
-    if status_code >= 400 or not chatbot_rows:
-        raise HTTPException(status_code=403, detail="Chatbot not found or not owned by this user")
-
+def update_chatbot_route(chatbot_id: str, req: UpdateChatbotRequest, user: AuthedUser = Depends(get_current_user), chatbot: dict = Depends(get_owned_chatbot)):
     data, status_code = update_chatbot_name(user.access_token, chatbot_id, req.name)
     if status_code >= 400:
         raise HTTPException(status_code=status_code, detail=data)
@@ -371,19 +348,17 @@ def update_chatbot_route(chatbot_id: str, req: UpdateChatbotRequest, user: Authe
 
 
 class UpdateChatbotSessionRequest(BaseModel):
-    label: str
+    label: NonEmptyStr
 
 
 @router.patch("/{chatbot_id}/sessions/{session_id}")
-def update_chatbot_session_route(chatbot_id: str, session_id: str, req: UpdateChatbotSessionRequest, user: AuthedUser = Depends(get_current_user)):
-    chatbot_rows, status_code = get_chatbot_entry(user.access_token, chatbot_id)
-    if status_code >= 400 or not chatbot_rows:
-        raise HTTPException(status_code=403, detail="Chatbot not found or not owned by this user")
-
-    session_rows, status_code = get_chatbot_session_entry(user.access_token, chatbot_id, session_id)
-    if status_code >= 400 or not session_rows:
-        raise HTTPException(status_code=404, detail="Session not found for this chatbot")
-
+def update_chatbot_session_route(
+    chatbot_id: str,
+    session_id: str,
+    req: UpdateChatbotSessionRequest,
+    user: AuthedUser = Depends(get_current_user),
+    session: dict = Depends(get_owned_chatbot_session),
+):
     data, status_code = update_chatbot_session_label(user.access_token, chatbot_id, session_id, req.label)
     if status_code >= 400:
         raise HTTPException(status_code=status_code, detail=data)

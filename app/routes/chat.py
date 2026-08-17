@@ -3,10 +3,10 @@ import secrets
 from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
+from app.credit_lock import deduct_credits_logged, user_credit_lock
 from app.deps import AuthedUser, get_current_user
 from app.rate_limit import limiter
 from app.powabase_client import (
-    deduct_user_credits,
     ensure_user_credits_row,
     get_agent_registry_entry,
     get_chat_session_entry,
@@ -48,10 +48,6 @@ def _build_context_override(session_id: str, session_token: str | None) -> str |
 @router.post("/chat")
 @limiter.limit("20/minute")
 def chat_route(request: Request, req: ChatRequest, user: AuthedUser = Depends(get_current_user)):
-    credits_row = ensure_user_credits_row(user.access_token, user.id)
-    if credits_row["tokens_remaining"] <= 0:
-        raise HTTPException(status_code=402, detail="Token balance exhausted. You have no tokens remaining.")
-
     registry_rows, status_code = get_agent_registry_entry(user.access_token, req.agent_id)
     if status_code >= 400 or not registry_rows:
         raise HTTPException(status_code=403, detail="Agent not found or not owned by this user")
@@ -63,21 +59,27 @@ def chat_route(request: Request, req: ChatRequest, user: AuthedUser = Depends(ge
             raise HTTPException(status_code=403, detail="Session not found or not owned by this user for this agent")
         context_override = _build_context_override(req.session_id, session_rows[0].get("session_token"))
 
-    data, status_code = run_agent(req.agent_id, req.message, session_id=req.session_id, context_override=context_override)
-    if status_code >= 400:
-        raise HTTPException(status_code=status_code, detail=data)
+    # Holds the balance check, the run, and the deduction under one lock so
+    # two concurrent requests from the same user can't both pass the check
+    # before either deducts -- deduct_credits itself is already atomic per
+    # call, but the pre-run balance read is a stale snapshot without this.
+    with user_credit_lock(user.id):
+        credits_row = ensure_user_credits_row(user.access_token, user.id)
+        if credits_row["tokens_remaining"] <= 0:
+            raise HTTPException(status_code=402, detail="Token balance exhausted. You have no tokens remaining.")
 
-    if not req.session_id:
-        session_token = secrets.token_urlsafe(32)
-        registry_row, status_code = insert_chat_session_row(user.access_token, user.id, req.agent_id, data["session_id"], req.label, session_token)
+        data, status_code = run_agent(req.agent_id, req.message, session_id=req.session_id, context_override=context_override)
         if status_code >= 400:
-            raise HTTPException(status_code=status_code, detail=registry_row)
+            raise HTTPException(status_code=status_code, detail=data)
 
-    usage = data.get("usage")
-    if usage and usage.get("total_tokens"):
-        try:
-            deduct_user_credits(user.access_token, user.id, usage["total_tokens"])
-        except Exception:
-            pass  # Best-effort bookkeeping -- never let a deduction failure cost the user their already-generated response.
+        if not req.session_id:
+            session_token = secrets.token_urlsafe(32)
+            registry_row, status_code = insert_chat_session_row(user.access_token, user.id, req.agent_id, data["session_id"], req.label, session_token)
+            if status_code >= 400:
+                raise HTTPException(status_code=status_code, detail=registry_row)
+
+        usage = data.get("usage")
+        if usage and usage.get("total_tokens"):
+            deduct_credits_logged(user.access_token, user.id, usage["total_tokens"])
 
     return data

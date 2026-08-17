@@ -1,7 +1,12 @@
 import json
+import time
 
 import requests
 from app.config import settings
+
+TERMINAL_EXTRACTION_STATUSES = {"extracted", "attention_required", "failed", "cancelled"}
+POLL_INTERVAL_SECONDS = 2
+POLL_TIMEOUT_SECONDS = 120
 
 
 def signup(email: str, password: str) -> dict:
@@ -52,6 +57,51 @@ def get_source(source_id: str) -> dict:
         },
     )
     return response.json(), response.status_code
+
+
+def upload_and_resolve_source_id(file_bytes: bytes, filename: str) -> tuple[str, None] | tuple[None, tuple[dict, int]]:
+    """
+    Upload a source and resolve its id, handling the "duplicate content"
+    case the same way every caller needs to: on a 409, the real id lives
+    under data["duplicate"]["id"] instead of data["id"].
+
+    Returns (source_id, None) on success, or (None, (error_data, status_code))
+    on failure -- the caller raises HTTPException(status_code, detail=error_data).
+    """
+    data, status_code = upload_source(file_bytes, filename)
+    if status_code == 409:
+        return data["duplicate"]["id"], None
+    if status_code < 400:
+        return data["id"], None
+    return None, (data, status_code)
+
+
+def wait_for_source_extraction(source_id: str) -> tuple[dict, int]:
+    """
+    Poll a Source until extraction reaches a terminal status.
+
+    Returns (data, status_code): a >=400 status_code means the poll itself
+    failed (network/API error, or timeout as a synthetic 504) and data is
+    the error body to surface. A 200 means polling succeeded and the
+    caller must still check data["extraction_status"] -- reaching a
+    terminal status doesn't mean extraction succeeded, just that it's done.
+    """
+    elapsed = 0
+    extraction_status = None
+    while extraction_status not in TERMINAL_EXTRACTION_STATUSES:
+        if elapsed >= POLL_TIMEOUT_SECONDS:
+            return {"error": "Timed out waiting for source extraction"}, 504
+
+        data, status_code = get_source(source_id)
+        if status_code >= 400:
+            return data, status_code
+
+        extraction_status = data["extraction_status"]
+        if extraction_status in TERMINAL_EXTRACTION_STATUSES:
+            return data, 200
+
+        time.sleep(POLL_INTERVAL_SECONDS)
+        elapsed += POLL_INTERVAL_SECONDS
 
 
 def add_source_to_kb(kb_id: str, source_id: str) -> dict:

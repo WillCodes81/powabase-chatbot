@@ -1,4 +1,5 @@
 import { useState, type KeyboardEvent, type MouseEvent } from 'react';
+import { describeError } from '../lib/errors';
 import styles from './EditableName.module.css';
 
 interface EditableNameProps {
@@ -38,8 +39,8 @@ export function EditableName({ value, onSave }: EditableNameProps) {
     try {
       await onSave(trimmed);
       setEditing(false);
-    } catch {
-      setError('Rename failed');
+    } catch (err) {
+      setError(describeError(err));
     } finally {
       setSaving(false);
     }
