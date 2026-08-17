@@ -5,8 +5,8 @@ export function listAgents() {
   return api.get<AgentSummary[]>('/agents');
 }
 
-export function createAgent(name: string, systemPrompt?: string) {
-  return api.post<AgentCreated>('/agents', { name, system_prompt: systemPrompt });
+export function createAgent(name: string, systemPrompt?: string, model?: string) {
+  return api.post<AgentCreated>('/agents', { name, system_prompt: systemPrompt, model: model || undefined });
 }
 
 export function updateAgentName(agentId: string, name: string) {

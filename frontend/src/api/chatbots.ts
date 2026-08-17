@@ -18,12 +18,13 @@ export function getChatbot(chatbotId: string) {
   return api.get<ChatbotDetail>(`/chatbots/${chatbotId}`);
 }
 
-export function createChatbot(name: string, agentName: string, roleDescription: string, systemPrompt?: string) {
+export function createChatbot(name: string, agentName: string, roleDescription: string, systemPrompt?: string, model?: string) {
   return api.post<ChatbotCreated>('/chatbots', {
     name,
     agent_name: agentName,
     role_description: roleDescription,
     system_prompt: systemPrompt,
+    model: model || undefined,
   });
 }
 

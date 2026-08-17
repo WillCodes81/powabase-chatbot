@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createChatbot } from '../api/chatbots';
 import { describeError } from '../lib/errors';
+import { AVAILABLE_MODELS } from '../lib/models';
 import { ErrorBanner } from '../components/ErrorBanner';
 import styles from './FormPage.module.css';
 
@@ -11,6 +12,7 @@ export function CreateChatbotPage() {
   const [agentName, setAgentName] = useState('');
   const [roleDescription, setRoleDescription] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
+  const [model, setModel] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -24,6 +26,7 @@ export function CreateChatbotPage() {
         agentName.trim(),
         roleDescription.trim(),
         systemPrompt.trim() || undefined,
+        model || undefined,
       );
       navigate(`/chatbots/${result.chatbot.id}`, { replace: true });
     } catch (err) {
@@ -80,6 +83,16 @@ export function CreateChatbotPage() {
             value={systemPrompt}
             onChange={(e) => setSystemPrompt(e.target.value)}
           />
+        </div>
+        <div className="field">
+          <label htmlFor="chatbot-model">First agent's model (optional)</label>
+          <select id="chatbot-model" className="input" value={model} onChange={(e) => setModel(e.target.value)}>
+            {AVAILABLE_MODELS.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
         </div>
         <button className="btn btn-primary" type="submit" disabled={submitting || !canSubmit}>
           {submitting ? 'Creating…' : 'Create chatbot'}

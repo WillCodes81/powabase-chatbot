@@ -2,6 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createAgent } from '../api/agents';
 import { describeError } from '../lib/errors';
+import { AVAILABLE_MODELS } from '../lib/models';
 import { ErrorBanner } from '../components/ErrorBanner';
 import styles from './FormPage.module.css';
 
@@ -9,6 +10,7 @@ export function CreateAgentPage() {
   const navigate = useNavigate();
   const [name, setName] = useState('');
   const [systemPrompt, setSystemPrompt] = useState('');
+  const [model, setModel] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
 
@@ -17,7 +19,7 @@ export function CreateAgentPage() {
     setError(null);
     setSubmitting(true);
     try {
-      const agent = await createAgent(name.trim(), systemPrompt.trim() || undefined);
+      const agent = await createAgent(name.trim(), systemPrompt.trim() || undefined, model || undefined);
       navigate(`/agents/${agent.agent_id}`, { replace: true });
     } catch (err) {
       setError(describeError(err));
@@ -49,6 +51,16 @@ export function CreateAgentPage() {
             value={systemPrompt}
             onChange={(e) => setSystemPrompt(e.target.value)}
           />
+        </div>
+        <div className="field">
+          <label htmlFor="agent-model">Model (optional)</label>
+          <select id="agent-model" className="input" value={model} onChange={(e) => setModel(e.target.value)}>
+            {AVAILABLE_MODELS.map((m) => (
+              <option key={m.value} value={m.value}>
+                {m.label}
+              </option>
+            ))}
+          </select>
         </div>
         <button className="btn btn-primary" type="submit" disabled={submitting || !name.trim()}>
           {submitting ? 'Creating…' : 'Create agent'}
