@@ -2,35 +2,36 @@
   display: flex;
   flex-direction: column;
   border: 1px solid var(--color-border);
-  border-radius: var(--radius);
+  border-radius: var(--radius-md);
   background: var(--color-surface);
-  height: 480px;
+  height: 640px;
 }
 .messages {
   flex: 1;
   overflow-y: auto;
-  padding: 16px;
+  padding: var(--space-5);
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: var(--space-3);
 }
 .empty {
   color: var(--color-text-muted);
-  font-size: 14px;
+  font-size: var(--text-base);
   margin: auto;
 }
 .bubbleUser, .bubbleAssistant {
   max-width: 75%;
-  padding: 10px 14px;
-  border-radius: 10px;
-  line-height: 1.45;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  line-height: 1.5;
   white-space: pre-wrap;
   word-break: break-word;
 }
 .bubbleUser {
   align-self: flex-end;
-  background: var(--color-accent);
+  background: var(--gradient-accent);
   color: #1a1300;
+  font-weight: 500;
 }
 .bubbleAssistant {
   align-self: flex-start;
@@ -42,16 +43,20 @@
   font-style: italic;
 }
 .error {
-  margin: 0 16px;
-  padding: 8px 12px;
-  border-radius: var(--radius);
+  margin: 0 var(--space-5);
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
   background: rgba(226, 87, 76, 0.12);
   color: var(--color-danger-strong);
-  font-size: 13px;
+  font-size: var(--text-sm);
 }
 .inputRow {
   display: flex;
-  gap: 8px;
-  padding: 12px;
+  gap: var(--space-3);
+  padding: var(--space-4);
   border-top: 1px solid var(--color-border);
+}
+.inputRow input {
+  flex: 1;
+  min-width: 0;
 }

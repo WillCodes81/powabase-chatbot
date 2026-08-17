@@ -24,6 +24,7 @@ export function ChatbotCard({ chatbot, onRenamed }: { chatbot: ChatbotSummary; o
           />
         </p>
         <p className={styles.meta}>{chatbot.orchestrator_id}</p>
+        <span className={styles.badge}>Chatbot</span>
       </div>
     </div>
   );

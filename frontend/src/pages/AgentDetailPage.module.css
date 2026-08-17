@@ -1,18 +1,21 @@
 .header {
-  margin-bottom: 24px;
+  margin-bottom: var(--space-7);
 }
 .section {
-  margin-bottom: 32px;
+  margin-bottom: var(--space-8);
 }
 .sectionHeader {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 12px;
+  margin-bottom: var(--space-5);
 }
 .uploads {
-  display: flex;
-  gap: 24px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: var(--space-4);
+  margin-top: var(--space-5);
+}
+.uploadTile {
+  padding: var(--space-5);
 }

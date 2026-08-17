@@ -24,6 +24,7 @@ export function AgentCard({ agent, onRenamed }: { agent: AgentSummary; onRenamed
           />
         </p>
         <p className={styles.meta}>{agent.agent_id}</p>
+        <span className={styles.badge}>Agent</span>
       </div>
     </div>
   );

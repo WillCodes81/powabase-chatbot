@@ -13,6 +13,7 @@ interface AuthContextValue {
 const AuthContext = createContext<AuthContextValue | undefined>(undefined);
 
 const STORAGE_KEY = 'powabase_auth';
+export const NEW_SIGNUP_KEY = 'powabase_new_signup';
 
 interface StoredAuth {
   token: string;
@@ -53,6 +54,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   async function signUp(email: string, password: string): Promise<{ loggedIn: boolean }> {
     const res = await signUpApi(email, password);
+    // Set unconditionally: this only ever runs from the sign-up form, so it
+    // correctly marks "first ever session" even when email confirmation
+    // delays the actual first login past this call.
+    localStorage.setItem(NEW_SIGNUP_KEY, 'true');
     if (res.access_token) {
       persist(res.access_token, res.user?.email ?? email);
       return { loggedIn: true };

@@ -67,19 +67,23 @@ export function AgentDetailPage() {
       <section className={styles.section}>
         <h2>Documents</h2>
         <div className={styles.uploads}>
-          <FileUploadButton
-            id="upload-permanent"
-            label="Add document to agent"
-            helpText="Permanent — available in every conversation with this agent."
-            onUpload={(file) => ingestFile(agentId!, file)}
-          />
-          <FileUploadButton
-            id="upload-attach"
-            label="Attach file to this conversation"
-            disabled={!conversation.activeSessionId}
-            disabledText="Send a message below first — this attaches to the active conversation only."
-            onUpload={(file) => attachDocumentToSession(agentId!, conversation.activeSessionId!, file)}
-          />
+          <div className={`card ${styles.uploadTile}`}>
+            <FileUploadButton
+              id="upload-permanent"
+              label="Add document to agent"
+              helpText="Permanent — available in every conversation with this agent."
+              onUpload={(file) => ingestFile(agentId!, file)}
+            />
+          </div>
+          <div className={`card ${styles.uploadTile}`}>
+            <FileUploadButton
+              id="upload-attach"
+              label="Attach file to this conversation"
+              disabled={!conversation.activeSessionId}
+              disabledText="Send a message below first — this attaches to the active conversation only."
+              onUpload={(file) => attachDocumentToSession(agentId!, conversation.activeSessionId!, file)}
+            />
+          </div>
         </div>
       </section>
 

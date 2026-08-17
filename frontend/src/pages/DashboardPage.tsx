@@ -2,6 +2,7 @@ import { Link } from 'react-router-dom';
 import { listAgents } from '../api/agents';
 import { listChatbots } from '../api/chatbots';
 import { useAsync } from '../hooks/useAsync';
+import { useCredits } from '../context/CreditsContext';
 import { AgentCard } from '../components/AgentCard';
 import { ChatbotCard } from '../components/ChatbotCard';
 import { EmptyState } from '../components/EmptyState';
@@ -12,13 +13,35 @@ import styles from './DashboardPage.module.css';
 export function DashboardPage() {
   const agents = useAsync(() => listAgents(), []);
   const chatbots = useAsync(() => listChatbots(), []);
+  const { credits } = useCredits();
 
   return (
     <div>
+      <div className={styles.hero}>
+        <div className={styles.heroText}>
+          <h1>Dashboard</h1>
+          <p className={styles.subline}>Your agents and chatbots, all in one place.</p>
+        </div>
+        <div className={styles.stats}>
+          <div className={styles.stat}>
+            <p className={styles.statValue}>{agents.data?.length ?? '—'}</p>
+            <p className={styles.statLabel}>Agents</p>
+          </div>
+          <div className={styles.stat}>
+            <p className={styles.statValue}>{chatbots.data?.length ?? '—'}</p>
+            <p className={styles.statLabel}>Chatbots</p>
+          </div>
+          <div className={styles.stat}>
+            <p className={styles.statValue}>{credits ? credits.tokens_remaining.toLocaleString() : '—'}</p>
+            <p className={styles.statLabel}>Tokens left</p>
+          </div>
+        </div>
+      </div>
+
       <section className={styles.section}>
         <div className={styles.sectionHeader}>
           <h2>My agents</h2>
-          <Link className="btn btn-primary" to="/agents/new">
+          <Link className="btn btn-primary" to="/agents/new" data-tour="create-agent-btn">
             Create new
           </Link>
         </div>
@@ -42,7 +65,7 @@ export function DashboardPage() {
       <section className={styles.section}>
         <div className={styles.sectionHeader}>
           <h2>My chatbots</h2>
-          <Link className="btn btn-primary" to="/chatbots/new">
+          <Link className="btn btn-primary" to="/chatbots/new" data-tour="create-chatbot-btn">
             Create new
           </Link>
         </div>
