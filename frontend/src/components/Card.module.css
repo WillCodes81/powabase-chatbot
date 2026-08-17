@@ -60,10 +60,12 @@
   font-weight: 600;
   font-size: 16px;
   margin: 0 0 4px;
+  pointer-events: none;
 }
 
 .meta {
   font-family: var(--font-mono);
   font-size: 12px;
   color: var(--color-text-muted);
+  pointer-events: none;
 }

@@ -2,12 +2,14 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  pointer-events: auto;
 }
 
 .editing {
   display: inline-flex;
   align-items: center;
   gap: 4px;
+  pointer-events: auto;
 }
 
 .input {
