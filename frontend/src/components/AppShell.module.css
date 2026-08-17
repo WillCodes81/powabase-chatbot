@@ -1,0 +1,105 @@
+.shell {
+  display: flex;
+  min-height: 100vh;
+}
+
+.sidebar {
+  width: var(--sidebar-width);
+  flex-shrink: 0;
+  background: var(--color-surface);
+  border-right: 1px solid var(--color-border);
+  display: flex;
+  flex-direction: column;
+  padding: 20px 16px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 16px;
+  margin-bottom: 32px;
+}
+
+.brandMark {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--color-accent);
+}
+
+.nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.credits {
+  border-top: 1px solid var(--color-border);
+  padding: 12px 10px;
+  margin-bottom: 4px;
+}
+
+.creditsLabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+  margin: 0 0 2px;
+}
+
+.creditsValue {
+  font-family: var(--font-mono);
+  font-size: 15px;
+  color: var(--color-accent);
+  margin: 0;
+}
+
+.navLink, .navLinkActive {
+  padding: 8px 10px;
+  border-radius: var(--radius);
+  color: var(--color-text-muted);
+  font-size: 14px;
+}
+.navLink:hover {
+  color: var(--color-text);
+  text-decoration: none;
+}
+.navLinkActive {
+  background: var(--color-surface-raised);
+  color: var(--color-text);
+  border: 1px solid var(--color-border);
+}
+
+.account {
+  border-top: 1px solid var(--color-border);
+  padding-top: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.email {
+  font-size: 12px;
+  color: var(--color-text-muted);
+  word-break: break-all;
+}
+
+.main {
+  flex: 1;
+  padding: 32px;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  .shell {
+    flex-direction: column;
+  }
+
+  .sidebar {
+    width: 100%;
+  }
+}

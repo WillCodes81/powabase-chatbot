@@ -1,0 +1,71 @@
+.card {
+  position: relative;
+  display: block;
+  padding: 16px 16px 16px 20px;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  background: var(--color-surface);
+  text-decoration: none;
+  color: var(--color-text);
+  transition: border-color 120ms ease, transform 120ms ease;
+}
+.card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 16px;
+  bottom: 16px;
+  width: 2px;
+  background: var(--color-border);
+}
+.card:hover {
+  border-color: var(--color-accent);
+  transform: translateY(-1px);
+  text-decoration: none;
+}
+.card:hover::before {
+  background: var(--color-accent);
+}
+
+/*
+ * Stretched-link pattern: the card itself is a plain div, and this Link
+ * covers the whole card as the default click target. It sits behind
+ * .cardContent (lower z-index), so any real interactive control rendered
+ * inside .cardContent (e.g. EditableName's input/buttons) receives clicks
+ * before they can reach this link, without relying on preventDefault.
+ */
+.cardLink {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+}
+
+.cardContent {
+  position: relative;
+  z-index: 2;
+}
+
+.dot {
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--color-positive);
+  margin-right: 6px;
+}
+
+.name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 16px;
+  margin: 0 0 4px;
+  pointer-events: none;
+}
+
+.meta {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--color-text-muted);
+  pointer-events: none;
+}

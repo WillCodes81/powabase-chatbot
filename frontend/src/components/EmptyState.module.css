@@ -1,0 +1,17 @@
+.empty {
+  padding: 32px 20px;
+  text-align: center;
+  border: 1px dashed var(--color-border);
+  border-radius: var(--radius);
+  color: var(--color-text-muted);
+}
+.title {
+  color: var(--color-text);
+  font-family: var(--font-display);
+  font-weight: 600;
+  margin: 0 0 4px;
+}
+.description {
+  margin: 0;
+  font-size: 14px;
+}

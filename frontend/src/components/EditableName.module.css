@@ -1,0 +1,51 @@
+.view {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.editing {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.input {
+  width: 160px;
+  max-width: 100%;
+  padding: 4px 8px;
+  font-size: 14px;
+  border-radius: var(--radius);
+  border: 1px solid var(--color-border);
+  background: var(--color-canvas);
+  color: var(--color-text);
+  pointer-events: auto;
+}
+.input:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.pencil {
+  background: transparent;
+  border: none;
+  padding: 2px 4px;
+  color: var(--color-text-muted);
+  font-size: 13px;
+  line-height: 1;
+  border-radius: var(--radius);
+  pointer-events: auto;
+}
+.pencil:hover:not(:disabled) {
+  color: var(--color-accent);
+  background: var(--color-surface-raised);
+}
+.pencil:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.error {
+  font-size: 12px;
+  color: var(--color-danger-strong);
+}
