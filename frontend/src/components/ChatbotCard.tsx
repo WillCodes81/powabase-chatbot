@@ -6,18 +6,25 @@ import styles from './Card.module.css';
 
 export function ChatbotCard({ chatbot, onRenamed }: { chatbot: ChatbotSummary; onRenamed: () => void }) {
   return (
-    <Link to={`/chatbots/${chatbot.id}`} className={styles.card}>
-      <p className={styles.name}>
-        <span className={styles.dot} />
-        <EditableName
-          value={chatbot.name}
-          onSave={async (newName) => {
-            await updateChatbotName(chatbot.id, newName);
-            onRenamed();
-          }}
-        />
-      </p>
-      <p className={styles.meta}>{chatbot.orchestrator_id}</p>
-    </Link>
+    <div className={styles.card}>
+      <Link
+        to={`/chatbots/${chatbot.id}`}
+        className={styles.cardLink}
+        aria-label={`View chatbot ${chatbot.name}`}
+      />
+      <div className={styles.cardContent}>
+        <p className={styles.name}>
+          <span className={styles.dot} />
+          <EditableName
+            value={chatbot.name}
+            onSave={async (newName) => {
+              await updateChatbotName(chatbot.id, newName);
+              onRenamed();
+            }}
+          />
+        </p>
+        <p className={styles.meta}>{chatbot.orchestrator_id}</p>
+      </div>
+    </div>
   );
 }

@@ -27,6 +27,25 @@
   background: var(--color-accent);
 }
 
+/*
+ * Stretched-link pattern: the card itself is a plain div, and this Link
+ * covers the whole card as the default click target. It sits behind
+ * .cardContent (lower z-index), so any real interactive control rendered
+ * inside .cardContent (e.g. EditableName's input/buttons) receives clicks
+ * before they can reach this link, without relying on preventDefault.
+ */
+.cardLink {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  border-radius: inherit;
+}
+
+.cardContent {
+  position: relative;
+  z-index: 2;
+}
+
 .dot {
   display: inline-block;
   width: 7px;
