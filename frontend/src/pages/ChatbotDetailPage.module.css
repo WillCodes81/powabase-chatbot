@@ -62,3 +62,7 @@
   font-size: var(--text-md);
   font-weight: 600;
 }
+.uploadTile {
+  max-width: 420px;
+  padding: var(--space-5);
+}

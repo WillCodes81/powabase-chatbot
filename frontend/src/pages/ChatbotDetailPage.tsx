@@ -10,11 +10,13 @@ import {
   getChatbotSessionMessages,
   updateChatbotSessionLabel,
 } from '../api/chatbots';
+import { ingestFile } from '../api/ingest';
 import { useAsync } from '../hooks/useAsync';
 import { useConversation } from '../hooks/useConversation';
 import { useCredits } from '../context/CreditsContext';
 import { ChatPanel } from '../components/ChatPanel';
 import { SessionHistoryPanel } from '../components/SessionHistoryPanel';
+import { FileUploadButton } from '../components/FileUploadButton';
 import { ConfirmButton } from '../components/ConfirmButton';
 import { ErrorBanner } from '../components/ErrorBanner';
 import { Spinner } from '../components/Spinner';
@@ -31,6 +33,7 @@ export function ChatbotDetailPage() {
   const sessions = useAsync(() => listChatbotSessions(chatbotId!), [chatbotId]);
   const conversation = useConversation((sessionId) => getChatbotSessionMessages(chatbotId!, sessionId));
 
+  const [uploadAgentId, setUploadAgentId] = useState('');
   const [addAgentOpen, setAddAgentOpen] = useState(false);
   const [agentName, setAgentName] = useState('');
   const [roleDescription, setRoleDescription] = useState('');
@@ -180,6 +183,37 @@ export function ChatbotDetailPage() {
             </div>
           ))}
         </div>
+      </section>
+
+      <section className={styles.section}>
+        <h2>Documents</h2>
+        {chatbot.data.agents.length === 0 ? (
+          <p className="mono">Add an agent first — documents upload to a specific agent's knowledge base.</p>
+        ) : (
+          <div className={`card ${styles.uploadTile}`}>
+            <div className="field">
+              <label htmlFor="upload-target-agent">Upload to</label>
+              <select
+                id="upload-target-agent"
+                className="input"
+                value={uploadAgentId || chatbot.data.agents[0].agent_id}
+                onChange={(e) => setUploadAgentId(e.target.value)}
+              >
+                {chatbot.data.agents.map((agent) => (
+                  <option key={agent.agent_id} value={agent.agent_id}>
+                    {agent.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <FileUploadButton
+              id="upload-chatbot-agent-document"
+              label="Add document to agent"
+              helpText="Permanent — available whenever this chatbot delegates to the selected agent."
+              onUpload={(file) => ingestFile(uploadAgentId || chatbot.data!.agents[0].agent_id, file)}
+            />
+          </div>
+        )}
       </section>
 
       <section className={styles.section}>
