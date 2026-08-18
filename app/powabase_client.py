@@ -298,11 +298,13 @@ def ensure_session_context_tool() -> str:
 
     endpoint = f"{settings.public_base_url}/tools/session-context"
     description = (
-        "Search the document(s) attached to the CURRENT chat session (this is NOT the agent's "
-        "permanent knowledge base). Call this whenever the user's question could plausibly be "
-        "answered by a document they attached earlier in this same conversation. Do not call it "
-        "for questions unrelated to any attached document. Always pass session_token with the "
-        "EXACT value given to you in this conversation's context -- never invent, guess, or omit it."
+        "Search a document the user attached to THIS specific chat session -- separate from "
+        "knowledge_search, which searches the agent's permanent knowledge base. "
+        "Before calling this tool, check whether a session_token value has been given to you "
+        "verbatim, in plain text, earlier in this conversation's context. If one has been given: "
+        "call this tool and pass that exact value as session_token. If none has been given: this "
+        "session has no attached document, so call knowledge_search instead of this tool, and do "
+        "not invent, guess, or fabricate a session_token."
     )
     input_schema = {
         "type": "object",
@@ -314,8 +316,8 @@ def ensure_session_context_tool() -> str:
             "session_token": {
                 "type": "string",
                 "description": (
-                    "The exact session_token value provided to you in this conversation's context. "
-                    "Never invent or guess this value."
+                    "The session_token value given to you verbatim earlier in this conversation's "
+                    "context. Never invent or guess this value."
                 ),
             },
         },
@@ -334,7 +336,8 @@ def ensure_session_context_tool() -> str:
             raise RuntimeError(f"Failed to create session context tool: {created}")
         return created["id"]
 
-    if existing.get("config", {}).get("endpoint") != endpoint:
+    needs_update = existing.get("config", {}).get("endpoint") != endpoint or existing.get("description") != description
+    if needs_update:
         updated, status_code = update_tool(existing["id"], SESSION_CONTEXT_TOOL_NAME, description, input_schema, config)
         if status_code >= 400:
             raise RuntimeError(f"Failed to update session context tool: {updated}")
