@@ -1,8 +1,11 @@
 import json
+import logging
 import time
 
 import requests
 from app.config import settings
+
+logger = logging.getLogger("app.orchestration")
 
 TERMINAL_EXTRACTION_STATUSES = {"extracted", "attention_required", "failed", "cancelled"}
 POLL_INTERVAL_SECONDS = 2
@@ -412,7 +415,7 @@ def get_agent_registry_entry(access_token: str, agent_id: str) -> list:
             "apikey": settings.powabase_anon_key,
             "Authorization": f"Bearer {access_token}",
         },
-        params={"agent_id": f"eq.{agent_id}", "select": "kb_id"},
+        params={"agent_id": f"eq.{agent_id}", "select": "kb_id,chatbot_id,orchestration_entity_id"},
     )
     return response.json(), response.status_code
 
@@ -554,6 +557,76 @@ def add_orchestration_entity(orchestration_id: str, agent_id: str, role_descript
         json={"entity_type": "agent", "entity_ref_id": agent_id, "role_description": role_description},
     )
     return response.json(), response.status_code
+
+
+def get_orchestration(orchestration_id: str) -> tuple[dict, int]:
+    response = requests.get(
+        f"{settings.powabase_url}/api/orchestrations/{orchestration_id}",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+        },
+    )
+    return response.json(), response.status_code
+
+
+def update_orchestration_entity_role(orchestration_id: str, entity_id: str, role_description: str) -> tuple[dict, int]:
+    response = requests.put(
+        f"{settings.powabase_url}/api/orchestrations/{orchestration_id}/entities/{entity_id}",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+            "Content-Type": "application/json",
+        },
+        json={"role_description": role_description},
+    )
+    return response.json(), response.status_code
+
+
+DOCUMENT_DELEGATION_CLAUSE = (
+    " This agent has documents uploaded to its knowledge base -- delegate any question "
+    "about documents, files, uploaded content, or their contents to it."
+)
+
+
+def ensure_document_delegation_clause(access_token: str, chatbot_id: str, entity_id: str) -> None:
+    """
+    The orchestrator's coordinator decides whether to delegate at all based
+    solely on each entity's role_description text -- confirmed live: a
+    role_description that doesn't mention documents/knowledge makes the
+    coordinator answer "I don't have the document" itself, 0/8 times,
+    without ever calling delegate_to_*, even though the subagent's KB has
+    the answer. Since role_description is free text a user writes once at
+    creation time (often before any document exists), keep it in sync here
+    at ingest time instead of relying on wording alone.
+
+    Best-effort and non-fatal like deduct_credits_logged in credit_lock.py --
+    the document has already been successfully ingested by the time this is
+    called, so a failure here must not fail the upload request.
+    """
+    chatbot_rows, status_code = get_chatbot_entry(access_token, chatbot_id)
+    if status_code >= 400 or not chatbot_rows:
+        logger.error("could not resolve chatbot for delegation-clause sync chatbot_id=%s status=%s", chatbot_id, status_code)
+        return
+    orchestrator_id = chatbot_rows[0]["orchestrator_id"]
+
+    orch_data, status_code = get_orchestration(orchestrator_id)
+    if status_code >= 400:
+        logger.error("could not fetch orchestration for delegation-clause sync orchestrator_id=%s status=%s", orchestrator_id, status_code)
+        return
+
+    entity = next((e for e in orch_data.get("entities", []) if e.get("id") == entity_id), None)
+    if entity is None:
+        logger.error("orchestration entity not found for delegation-clause sync orchestrator_id=%s entity_id=%s", orchestrator_id, entity_id)
+        return
+
+    current_role = entity.get("role_description") or ""
+    if DOCUMENT_DELEGATION_CLAUSE.strip() in current_role:
+        return
+
+    _, status_code = update_orchestration_entity_role(orchestrator_id, entity_id, current_role + DOCUMENT_DELEGATION_CLAUSE)
+    if status_code >= 400:
+        logger.error("failed to update role_description for delegation-clause sync orchestrator_id=%s entity_id=%s status=%s", orchestrator_id, entity_id, status_code)
 
 
 def remove_orchestration_entity(orchestration_id: str, entity_id: str) -> dict:

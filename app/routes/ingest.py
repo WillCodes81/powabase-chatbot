@@ -3,6 +3,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Upload
 from app.deps import AuthedUser, get_current_user
 from app.powabase_client import (
     add_source_to_kb,
+    ensure_document_delegation_clause,
     get_agent_registry_entry,
     upload_and_resolve_source_id,
     wait_for_source_extraction,
@@ -26,6 +27,8 @@ def ingest_file_route(
     if status_code >= 400 or not registry_rows:
         raise HTTPException(status_code=403, detail="Agent not found or not owned by this user")
     kb_id = registry_rows[0]["kb_id"]
+    chatbot_id = registry_rows[0].get("chatbot_id")
+    orchestration_entity_id = registry_rows[0].get("orchestration_entity_id")
 
     file_bytes = file.file.read()
 
@@ -48,4 +51,8 @@ def ingest_file_route(
     data, status_code = add_source_to_kb(kb_id, source_id)
     if status_code >= 400:
         raise HTTPException(status_code=status_code, detail=data)
+
+    if chatbot_id and orchestration_entity_id:
+        ensure_document_delegation_clause(user.access_token, chatbot_id, orchestration_entity_id)
+
     return data
