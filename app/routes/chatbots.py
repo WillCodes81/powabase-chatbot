@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 
 from app.credit_lock import deduct_credits_logged, user_credit_lock
@@ -8,6 +8,7 @@ from app.rate_limit import limiter
 from app.powabase_client import (
     SESSION_CONTEXT_TOOL_NAME,
     add_orchestration_entity,
+    add_source_to_kb,
     assign_tool_to_agent,
     create_agent,
     create_knowledge_base,
@@ -22,6 +23,7 @@ from app.powabase_client import (
     ensure_user_credits_row,
     get_chatbot_agent_entry,
     get_chatbot_session_entry,
+    get_chatbot_session_kb_ids,
     get_session_messages,
     insert_agent_registry_row,
     insert_chatbot_row,
@@ -33,7 +35,10 @@ from app.powabase_client import (
     remove_orchestration_entity,
     run_orchestration,
     update_chatbot_name,
+    update_chatbot_session_kb_id,
     update_chatbot_session_label,
+    upload_and_resolve_source_id,
+    wait_for_source_extraction,
 )
 from app.validation import NonEmptyStr
 
@@ -149,6 +154,57 @@ def get_chatbot_session_messages_route(chatbot_id: str, session_id: str, session
     return data
 
 
+@router.post("/{chatbot_id}/sessions/{session_id}/attach-document")
+def attach_chatbot_session_document_route(
+    chatbot_id: str,
+    session_id: str,
+    file: UploadFile = File(...),
+    user: AuthedUser = Depends(get_current_user),
+    session: dict = Depends(get_owned_chatbot_session),
+):
+    """
+    Attaches a document scoped to this one conversation, available to
+    whichever subagent(s) the orchestrator delegates to on each turn --
+    not to a specific subagent's permanent KB, and not visible from any
+    other conversation with this chatbot (see run_orchestration's kb_id ->
+    runtime_knowledge_bases wiring). Mirrors sessions.py's
+    attach_document_route for standalone agents.
+    """
+    kb_id = session.get("kb_id")
+    if not kb_id:
+        kb_data, status_code = create_knowledge_base(f"chatbot-session-{session_id}")
+        if status_code >= 400:
+            raise HTTPException(status_code=status_code, detail=kb_data)
+        kb_id = kb_data["id"]
+        _, status_code = update_chatbot_session_kb_id(user.access_token, chatbot_id, session_id, kb_id)
+        if status_code >= 400:
+            raise HTTPException(status_code=status_code, detail="Failed to save session's knowledge base id")
+
+    file_bytes = file.file.read()
+
+    source_id, error = upload_and_resolve_source_id(file_bytes, file.filename)
+    if error:
+        error_data, error_status = error
+        raise HTTPException(status_code=error_status, detail=error_data)
+
+    data, status_code = wait_for_source_extraction(source_id)
+    if status_code >= 400:
+        raise HTTPException(status_code=status_code, detail=data)
+
+    extraction_status = data["extraction_status"]
+    if extraction_status != "extracted":
+        raise HTTPException(
+            status_code=422,
+            detail=f"Document extraction ended in status '{extraction_status}', cannot index",
+        )
+
+    index_data, status_code = add_source_to_kb(kb_id, source_id)
+    if status_code >= 400:
+        raise HTTPException(status_code=status_code, detail=index_data)
+
+    return {"kb_id": kb_id, "source_id": source_id, "filename": file.filename, **index_data}
+
+
 class AddAgentRequest(BaseModel):
     name: NonEmptyStr
     role_description: NonEmptyStr
@@ -215,6 +271,14 @@ def delete_chatbot_agent_route(chatbot_id: str, agent_id: str, user: AuthedUser 
         if sc >= 400:
             raise HTTPException(status_code=sc, detail="Failed to delete agent registry row")
 
+        session_kb_rows, sc = get_chatbot_session_kb_ids(user.access_token, chatbot_id)
+        if sc >= 400:
+            raise HTTPException(status_code=sc, detail="Failed to look up chatbot's session knowledge bases")
+        for row in session_kb_rows:
+            _, sc = delete_knowledge_base(row["kb_id"])
+            if sc >= 400:
+                raise HTTPException(status_code=sc, detail=f"Failed to delete session knowledge base {row['kb_id']}")
+
         _, sc = delete_chatbot_session_rows(user.access_token, chatbot_id)
         if sc >= 400:
             raise HTTPException(status_code=sc, detail="Failed to delete chatbot's session history")
@@ -277,6 +341,14 @@ def delete_chatbot_route(chatbot_id: str, user: AuthedUser = Depends(get_current
         if sc >= 400:
             raise HTTPException(status_code=sc, detail=f"Failed to delete registry row for agent {row['agent_id']}")
 
+    session_kb_rows, status_code = get_chatbot_session_kb_ids(user.access_token, chatbot_id)
+    if status_code >= 400:
+        raise HTTPException(status_code=status_code, detail="Failed to look up chatbot's session knowledge bases")
+    for row in session_kb_rows:
+        _, sc = delete_knowledge_base(row["kb_id"])
+        if sc >= 400:
+            raise HTTPException(status_code=sc, detail=f"Failed to delete session knowledge base {row['kb_id']}")
+
     _, sc = delete_chatbot_session_rows(user.access_token, chatbot_id)
     if sc >= 400:
         raise HTTPException(status_code=sc, detail="Failed to delete chatbot's session history")
@@ -308,10 +380,12 @@ def chatbot_chat_route(
     # session_id is optional and comes from the request body, not the URL
     # path, so it can't be resolved via a path-param-based dependency the
     # way chatbot ownership above is -- stays a manual, conditional check.
+    session_kb_id = None
     if req.session_id:
         session_rows, status_code = get_chatbot_session_entry(user.access_token, chatbot_id, req.session_id)
         if status_code >= 400 or not session_rows:
             raise HTTPException(status_code=403, detail="Session not found or not owned by this user for this chatbot")
+        session_kb_id = session_rows[0].get("kb_id")
 
     # See chat.py's chat_route for why this whole span is locked per-user.
     with user_credit_lock(user.id):
@@ -319,7 +393,7 @@ def chatbot_chat_route(
         if credits_row["tokens_remaining"] <= 0:
             raise HTTPException(status_code=402, detail="Token balance exhausted. You have no tokens remaining.")
 
-        data, status_code = run_orchestration(orchestrator_id, req.message, session_id=req.session_id)
+        data, status_code = run_orchestration(orchestrator_id, req.message, session_id=req.session_id, kb_id=session_kb_id)
         if status_code >= 400:
             raise HTTPException(status_code=status_code, detail=data)
 

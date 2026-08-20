@@ -1,5 +1,6 @@
 import { api } from './client';
 import type {
+  AttachDocumentResult,
   ChatbotCreated,
   ChatbotDetail,
   ChatbotSubAgent,
@@ -58,6 +59,12 @@ export function listChatbotSessions(chatbotId: string) {
 
 export function getChatbotSessionMessages(chatbotId: string, sessionId: string) {
   return api.get<{ messages: SessionMessage[] }>(`/chatbots/${chatbotId}/sessions/${sessionId}/messages`);
+}
+
+export function attachDocumentToChatbotSession(chatbotId: string, sessionId: string, file: File) {
+  const formData = new FormData();
+  formData.append('file', file);
+  return api.postForm<AttachDocumentResult>(`/chatbots/${chatbotId}/sessions/${sessionId}/attach-document`, formData);
 }
 
 export function updateChatbotName(chatbotId: string, name: string) {

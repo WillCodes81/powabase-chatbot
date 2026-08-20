@@ -662,10 +662,21 @@ def delete_agent(agent_id: str) -> dict:
     return response.json(), response.status_code
 
 
-def run_orchestration(orchestration_id: str, message: str, session_id: str | None = None) -> dict:
+def run_orchestration(orchestration_id: str, message: str, session_id: str | None = None, kb_id: str | None = None) -> dict:
     body = {"message": message}
     if session_id:
         body["session_id"] = session_id
+    if kb_id:
+        # Verified live 2026-08-20: runtime_knowledge_bases gives every
+        # sub-agent delegated to during this one run a real knowledge_search
+        # tool over the named KB(s), scoped to just this request -- a
+        # separate run without it has no access. It is NOT scoped to a
+        # single entity though: it flows to every sub-agent invoked in this
+        # run, not just an intended one (confirmed live: an unrelated
+        # sub-agent that also got delegated to in the same turn could read
+        # it). Fine here because it's per-conversation isolation we need,
+        # not per-subagent isolation.
+        body["runtime_knowledge_bases"] = [{"id": kb_id}]
 
     with requests.post(
         f"{settings.powabase_url}/api/orchestrations/{orchestration_id}/run/stream",
@@ -830,7 +841,37 @@ def get_chatbot_session_entry(access_token: str, chatbot_id: str, session_id: st
             "apikey": settings.powabase_anon_key,
             "Authorization": f"Bearer {access_token}",
         },
-        params={"chatbot_id": f"eq.{chatbot_id}", "powabase_session_id": f"eq.{session_id}", "select": "id,label,created_at"},
+        params={"chatbot_id": f"eq.{chatbot_id}", "powabase_session_id": f"eq.{session_id}", "select": "id,label,created_at,kb_id"},
+    )
+    return response.json(), response.status_code
+
+
+def update_chatbot_session_kb_id(access_token: str, chatbot_id: str, session_id: str, kb_id: str) -> tuple[dict, int]:
+    response = requests.patch(
+        f"{settings.powabase_url}/rest/v1/chatbot_sessions",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation",
+        },
+        params={"chatbot_id": f"eq.{chatbot_id}", "powabase_session_id": f"eq.{session_id}"},
+        json={"kb_id": kb_id},
+    )
+    data = response.json()
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    return data, response.status_code
+
+
+def get_chatbot_session_kb_ids(access_token: str, chatbot_id: str) -> tuple[list, int]:
+    response = requests.get(
+        f"{settings.powabase_url}/rest/v1/chatbot_sessions",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+        },
+        params={"chatbot_id": f"eq.{chatbot_id}", "select": "kb_id", "kb_id": "not.is.null"},
     )
     return response.json(), response.status_code
 
