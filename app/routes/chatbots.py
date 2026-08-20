@@ -387,8 +387,11 @@ def chatbot_chat_route(
             raise HTTPException(status_code=403, detail="Session not found or not owned by this user for this chatbot")
         session_kb_id = session_rows[0].get("kb_id")
 
+    # Must exist before we can lock it -- see chat.py's chat_route.
+    ensure_user_credits_row(user.access_token, user.id)
+
     # See chat.py's chat_route for why this whole span is locked per-user.
-    with user_credit_lock(user.id):
+    with user_credit_lock(user.access_token, user.id):
         credits_row = ensure_user_credits_row(user.access_token, user.id)
         if credits_row["tokens_remaining"] <= 0:
             raise HTTPException(status_code=402, detail="Token balance exhausted. You have no tokens remaining.")

@@ -59,11 +59,16 @@ def chat_route(request: Request, req: ChatRequest, user: AuthedUser = Depends(ge
             raise HTTPException(status_code=403, detail="Session not found or not owned by this user for this agent")
         context_override = _build_context_override(req.session_id, session_rows[0].get("session_token"))
 
+    # Must exist before we can lock it -- user_credit_lock acquires by
+    # conditionally updating this row, so a user with no row yet has
+    # nothing to match and could never acquire the lock at all.
+    ensure_user_credits_row(user.access_token, user.id)
+
     # Holds the balance check, the run, and the deduction under one lock so
     # two concurrent requests from the same user can't both pass the check
     # before either deducts -- deduct_credits itself is already atomic per
     # call, but the pre-run balance read is a stale snapshot without this.
-    with user_credit_lock(user.id):
+    with user_credit_lock(user.access_token, user.id):
         credits_row = ensure_user_credits_row(user.access_token, user.id)
         if credits_row["tokens_remaining"] <= 0:
             raise HTTPException(status_code=402, detail="Token balance exhausted. You have no tokens remaining.")

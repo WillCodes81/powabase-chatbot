@@ -1,6 +1,7 @@
 import json
 import logging
 import time
+from datetime import datetime, timedelta, timezone
 
 import requests
 from app.config import settings
@@ -943,6 +944,70 @@ def deduct_user_credits(access_token: str, user_id: str, tokens: int) -> tuple[d
     if isinstance(data, list):
         data = data[0] if data else {}
     return data, response.status_code
+
+
+CREDIT_LOCK_LEASE_SECONDS = 120
+
+
+def acquire_credit_lock(access_token: str, user_id: str) -> bool:
+    """
+    Atomic, database-level mutex on user_credits.locked_at, keyed by user_id.
+    A single conditional PATCH: PostgREST/Postgres serializes concurrent
+    UPDATEs on the same row, so exactly one concurrent caller can win this
+    regardless of how many app processes or machines are calling it --
+    unlike an in-process threading.Lock (see credit_lock.py), which only
+    protects a single worker process.
+
+    Returns True iff this call acquired the lock (0 matching rows = someone
+    else holds it and it isn't stale yet). Locks older than
+    CREDIT_LOCK_LEASE_SECONDS are treated as abandoned (a crashed/hung
+    request) and are reclaimable, so a failure mid-request can't deadlock
+    a user out of their own account forever.
+
+    Uses `return=minimal` + the `Content-Range` header to detect whether a
+    row actually matched, not `return=representation`'s response body --
+    verified live that this Powabase project's PostgREST silently returns
+    an empty body for `return=representation` when combined with an `or=`
+    filter, even though the row IS updated. Trusting that empty body as
+    "0 rows matched" meant this always reported failure, including on the
+    calls that actually won -- the lock got taken but never recorded as
+    acquired, so it was never released either: every request piled up
+    behind a lock nothing knew it was holding. `Content-Range` (e.g.
+    `0-0/*` for a match, `*/*` for none) isn't affected by that bug.
+    """
+    now = datetime.now(timezone.utc)
+    stale_before = (now - timedelta(seconds=CREDIT_LOCK_LEASE_SECONDS)).isoformat()
+    response = requests.patch(
+        f"{settings.powabase_url}/rest/v1/user_credits",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+            "Prefer": "return=minimal",
+        },
+        params={
+            "user_id": f"eq.{user_id}",
+            "or": f"(locked_at.is.null,locked_at.lt.{stale_before})",
+        },
+        json={"locked_at": now.isoformat()},
+    )
+    if response.status_code >= 400:
+        return False
+    content_range = response.headers.get("Content-Range", "*/*")
+    return not content_range.startswith("*")
+
+
+def release_credit_lock(access_token: str, user_id: str) -> None:
+    requests.patch(
+        f"{settings.powabase_url}/rest/v1/user_credits",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+        },
+        params={"user_id": f"eq.{user_id}"},
+        json={"locked_at": None},
+    )
 
 
 def update_agent_registry_name(access_token: str, agent_id: str, name: str) -> tuple[dict, int]:
