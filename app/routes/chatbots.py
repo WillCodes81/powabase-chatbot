@@ -24,7 +24,7 @@ from app.powabase_client import (
     get_chatbot_agent_entry,
     get_chatbot_session_entry,
     get_chatbot_session_kb_ids,
-    get_session_messages,
+    get_orchestration_session_messages,
     insert_agent_registry_row,
     insert_chatbot_row,
     insert_chatbot_session_row,
@@ -147,8 +147,13 @@ def list_chatbot_sessions_route(chatbot_id: str, user: AuthedUser = Depends(get_
 
 
 @router.get("/{chatbot_id}/sessions/{session_id}/messages")
-def get_chatbot_session_messages_route(chatbot_id: str, session_id: str, session: dict = Depends(get_owned_chatbot_session)):
-    data, status_code = get_session_messages(session_id)
+def get_chatbot_session_messages_route(
+    chatbot_id: str,
+    session_id: str,
+    chatbot: dict = Depends(get_owned_chatbot),
+    session: dict = Depends(get_owned_chatbot_session),
+):
+    data, status_code = get_orchestration_session_messages(chatbot["orchestrator_id"], session_id)
     if status_code >= 400:
         raise HTTPException(status_code=status_code, detail=data)
     return data

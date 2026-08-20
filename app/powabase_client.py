@@ -444,6 +444,26 @@ def get_session_messages(session_id: str) -> dict:
     return response.json(), response.status_code
 
 
+def get_orchestration_session_messages(orchestrator_id: str, session_id: str) -> tuple[dict, int]:
+    """
+    Orchestration sessions are a distinct resource from standalone-agent
+    sessions -- verified live: GET /api/sessions/{id}/messages (the
+    standalone-agent endpoint) returns an empty messages array for an
+    orchestration session_id every time, even with real prior messages,
+    while this orchestrator-scoped path returns them correctly. Root cause
+    of "session shows up in history, but clicking it shows no messages"
+    for chatbots.
+    """
+    response = requests.get(
+        f"{settings.powabase_url}/api/orchestrations/{orchestrator_id}/sessions/{session_id}/messages",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+        },
+    )
+    return response.json(), response.status_code
+
+
 def insert_chat_session_row(access_token: str, user_id: str, agent_id: str, powabase_session_id: str, label: str | None, session_token: str) -> dict:
     response = requests.post(
         f"{settings.powabase_url}/rest/v1/chat_sessions",
