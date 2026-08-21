@@ -8,7 +8,12 @@ from app.powabase_client import (
     assign_tool_to_agent,
     create_agent,
     create_knowledge_base,
+    delete_agent,
+    delete_agent_registry_row,
+    delete_agent_session_rows,
+    delete_knowledge_base,
     ensure_session_context_tool,
+    get_agent_session_kb_ids,
     insert_agent_registry_row,
     link_agent_knowledge_base,
     list_agent_registry_rows,
@@ -70,3 +75,40 @@ def update_agent_route(agent_id: str, req: UpdateAgentRequest, user: AuthedUser 
     if status_code >= 400:
         raise HTTPException(status_code=status_code, detail=data)
     return data
+
+
+@router.delete("/{agent_id}")
+def delete_agent_route(agent_id: str, user: AuthedUser = Depends(get_current_user), agent: dict = Depends(get_owned_agent)):
+    if agent.get("chatbot_id"):
+        raise HTTPException(
+            status_code=400,
+            detail="This agent belongs to a chatbot -- remove it via DELETE /chatbots/{chatbot_id}/agents/{agent_id} instead.",
+        )
+
+    kb_id = agent.get("kb_id")
+    if kb_id:
+        _, sc = delete_knowledge_base(kb_id)
+        if sc >= 400:
+            raise HTTPException(status_code=sc, detail="Failed to delete agent's knowledge base")
+
+    session_kb_rows, status_code = get_agent_session_kb_ids(user.access_token, agent_id)
+    if status_code >= 400:
+        raise HTTPException(status_code=status_code, detail="Failed to look up agent's session knowledge bases")
+    for row in session_kb_rows:
+        _, sc = delete_knowledge_base(row["kb_id"])
+        if sc >= 400:
+            raise HTTPException(status_code=sc, detail=f"Failed to delete session knowledge base {row['kb_id']}")
+
+    _, sc = delete_agent_session_rows(user.access_token, agent_id)
+    if sc >= 400:
+        raise HTTPException(status_code=sc, detail="Failed to delete agent's session history")
+
+    _, sc = delete_agent(agent_id)
+    if sc >= 400:
+        raise HTTPException(status_code=sc, detail="Failed to delete agent")
+
+    _, sc = delete_agent_registry_row(user.access_token, agent_id)
+    if sc >= 400:
+        raise HTTPException(status_code=sc, detail="Failed to delete agent registry row")
+
+    return {"deleted": True}

@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { useParams } from 'react-router-dom';
-import { listAgents } from '../api/agents';
+import { useNavigate, useParams } from 'react-router-dom';
+import { listAgents, deleteAgent } from '../api/agents';
 import { listSessions, getSessionMessages, deleteSession, attachDocumentToSession, updateSessionLabel } from '../api/sessions';
 import { ingestFile } from '../api/ingest';
 import { chatWithAgent } from '../api/chat';
@@ -10,6 +10,7 @@ import { useCredits } from '../context/CreditsContext';
 import { ChatPanel } from '../components/ChatPanel';
 import { SessionHistoryPanel } from '../components/SessionHistoryPanel';
 import { FileUploadButton } from '../components/FileUploadButton';
+import { ConfirmButton } from '../components/ConfirmButton';
 import { ErrorBanner } from '../components/ErrorBanner';
 import { Spinner } from '../components/Spinner';
 import { describeError } from '../lib/errors';
@@ -18,6 +19,7 @@ import styles from './AgentDetailPage.module.css';
 
 export function AgentDetailPage() {
   const { agentId } = useParams<{ agentId: string }>();
+  const navigate = useNavigate();
   const credits = useCredits();
 
   const agentsList = useAsync(() => listAgents(), []);
@@ -34,6 +36,15 @@ export function AgentDetailPage() {
       sessions.reload();
       if (conversation.activeSessionId === sessionId) conversation.clear();
       setActionError(null);
+    } catch (err) {
+      setActionError(describeError(err));
+    }
+  }
+
+  async function handleDeleteAgent() {
+    try {
+      await deleteAgent(agentId!);
+      navigate('/', { replace: true });
     } catch (err) {
       setActionError(describeError(err));
     }
@@ -60,9 +71,14 @@ export function AgentDetailPage() {
   return (
     <div>
       <div className={styles.header}>
-        <h1>{agent.name}</h1>
-        <p className="mono">{agent.agent_id}</p>
+        <div>
+          <h1>{agent.name}</h1>
+          <p className="mono">{agent.agent_id}</p>
+        </div>
+        <ConfirmButton label="Delete agent" confirmLabel="Confirm delete" onConfirm={handleDeleteAgent} />
       </div>
+
+      {actionError && <ErrorBanner message={actionError} />}
 
       <section className={styles.section}>
         <h2>Documents</h2>
@@ -94,7 +110,6 @@ export function AgentDetailPage() {
             New chat
           </button>
         </div>
-        {actionError && <ErrorBanner message={actionError} />}
         <SessionHistoryPanel
           loading={sessions.loading}
           error={sessions.error}

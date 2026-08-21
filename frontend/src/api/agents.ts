@@ -1,5 +1,5 @@
 import { api } from './client';
-import type { AgentCreated, AgentSummary } from './types';
+import type { AgentCreated, AgentSummary, DeleteResult } from './types';
 
 export function listAgents() {
   return api.get<AgentSummary[]>('/agents');
@@ -11,4 +11,8 @@ export function createAgent(name: string, systemPrompt?: string, model?: string)
 
 export function updateAgentName(agentId: string, name: string) {
   return api.patch<AgentCreated>(`/agents/${agentId}`, { name });
+}
+
+export function deleteAgent(agentId: string) {
+  return api.del<DeleteResult>(`/agents/${agentId}`);
 }

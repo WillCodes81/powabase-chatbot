@@ -554,6 +554,32 @@ def list_chat_sessions(access_token: str, agent_id: str) -> list:
     return response.json(), response.status_code
 
 
+def get_agent_session_kb_ids(access_token: str, agent_id: str) -> tuple[list, int]:
+    response = requests.get(
+        f"{settings.powabase_url}/rest/v1/chat_sessions",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+        },
+        params={"agent_id": f"eq.{agent_id}", "select": "kb_id", "kb_id": "not.is.null"},
+    )
+    return response.json(), response.status_code
+
+
+def delete_agent_session_rows(access_token: str, agent_id: str) -> tuple[dict, int]:
+    response = requests.delete(
+        f"{settings.powabase_url}/rest/v1/chat_sessions",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+        },
+        params={"agent_id": f"eq.{agent_id}"},
+    )
+    if response.status_code >= 400:
+        return response.json(), response.status_code
+    return {}, response.status_code
+
+
 def create_orchestration(name: str, orchestrator_config: dict) -> dict:
     response = requests.post(
         f"{settings.powabase_url}/api/orchestrations",
