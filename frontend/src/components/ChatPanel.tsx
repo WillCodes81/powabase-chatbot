@@ -1,4 +1,6 @@
 import { useState, type FormEvent } from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { ChatResult, SessionMessage } from '../api/types';
 import { describeError } from '../lib/errors';
 import styles from './ChatPanel.module.css';
@@ -61,7 +63,11 @@ export function ChatPanel({
         {messages.length === 0 && !sending && <p className={styles.empty}>Say something to start the conversation.</p>}
         {messages.map((m, i) => (
           <div key={i} className={m.role === 'user' ? styles.bubbleUser : styles.bubbleAssistant}>
-            {m.content}
+            {m.role === 'assistant' ? (
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{m.content}</ReactMarkdown>
+            ) : (
+              m.content
+            )}
           </div>
         ))}
         {sending && (
