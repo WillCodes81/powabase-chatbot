@@ -1,0 +1,56 @@
+.blocker {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+}
+
+.spotlight {
+  position: fixed;
+  z-index: 101;
+  pointer-events: none;
+  border-radius: var(--radius-md);
+  border: 2px solid var(--color-accent);
+  box-shadow: 0 0 0 9999px rgba(12, 14, 18, 0.78);
+  transition: top 200ms ease, left 200ms ease, width 200ms ease, height 200ms ease;
+}
+
+.popover {
+  position: fixed;
+  z-index: 102;
+  width: 320px;
+  padding: var(--space-5);
+  background: var(--color-surface-overlay);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-elevated);
+  transition: top 200ms ease, left 200ms ease;
+}
+.popover h3 {
+  font-size: var(--text-md);
+  margin: 0 0 var(--space-2);
+}
+.popover:focus-visible {
+  outline: none;
+}
+
+.step {
+  font-size: var(--text-xs);
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--color-accent-strong);
+  margin: 0 0 var(--space-2);
+}
+
+.body {
+  font-size: var(--text-sm);
+  color: var(--color-text-muted);
+  line-height: 1.5;
+  margin: 0 0 var(--space-5);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}

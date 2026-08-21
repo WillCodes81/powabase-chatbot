@@ -1,0 +1,28 @@
+.wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-1);
+}
+.hiddenInput {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+.help {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+.success {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-positive);
+}
+.error {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--color-danger-strong);
+}
