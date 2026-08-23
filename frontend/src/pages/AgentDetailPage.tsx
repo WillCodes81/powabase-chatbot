@@ -1,9 +1,10 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { listAgents, deleteAgent } from '../api/agents';
 import { listSessions, getSessionMessages, deleteSession, attachDocumentToSession, updateSessionLabel } from '../api/sessions';
 import { ingestFile } from '../api/ingest';
 import { chatWithAgent } from '../api/chat';
+import { createPublicShare, getPublicShareBySource } from '../api/publicShare';
 import { useAsync } from '../hooks/useAsync';
 import { useConversation } from '../hooks/useConversation';
 import { useCredits } from '../context/CreditsContext';
@@ -29,6 +30,40 @@ export function AgentDetailPage() {
   const conversation = useConversation((sessionId) => getSessionMessages(agentId!, sessionId));
 
   const [actionError, setActionError] = useState<string | null>(null);
+
+  const [shareId, setShareId] = useState<string | null>(null);
+  const [shareUrl, setShareUrl] = useState<string | null>(null);
+  const [shareChecked, setShareChecked] = useState(false);
+  const [shareError, setShareError] = useState<string | null>(null);
+  const [sharing, setSharing] = useState(false);
+
+  useEffect(() => {
+    if (!agentId) return;
+    getPublicShareBySource(agentId)
+      .then((result) => {
+        setShareId(result.share_id);
+        setShareUrl(`${window.location.origin}/share/${result.share_id}`);
+      })
+      .catch(() => {
+        // 404 -- no public share exists for this agent yet, which is the
+        // normal case. Nothing to restore, nothing to show as an error.
+      })
+      .finally(() => setShareChecked(true));
+  }, [agentId]);
+
+  async function handleCreateShareableLink() {
+    setSharing(true);
+    setShareError(null);
+    try {
+      const result = await createPublicShare(`${agent!.name} (Public)`, agentId!);
+      setShareId(result.share_id);
+      setShareUrl(`${window.location.origin}/share/${result.share_id}`);
+    } catch (err) {
+      setShareError(describeError(err));
+    } finally {
+      setSharing(false);
+    }
+  }
 
   async function handleDeleteSession(sessionId: string) {
     try {
@@ -101,6 +136,26 @@ export function AgentDetailPage() {
             />
           </div>
         </div>
+      </section>
+
+      <section className={styles.section}>
+        <h2>Public sharing</h2>
+        <p>
+          Creates a brand-new, separate agent with a fixed assistant prompt and its own knowledge
+          base — anyone with the link can chat with it, no account required. This is not the same
+          agent or knowledge base as the one above.
+        </p>
+        {shareChecked && !shareUrl && (
+          <button type="button" className="btn btn-primary" onClick={handleCreateShareableLink} disabled={sharing}>
+            {sharing ? 'Creating…' : 'Get shareable link'}
+          </button>
+        )}
+        {shareError && <ErrorBanner message={shareError} />}
+        {shareUrl && shareId && (
+          <div className={styles.uploadTile}>
+            <p className="mono">{shareUrl}</p>
+          </div>
+        )}
       </section>
 
       <section className={styles.section}>
