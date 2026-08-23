@@ -2,7 +2,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from starlette.responses import PlainTextResponse
 
-from app.powabase_client import get_chat_session_by_token, query_context_handler
+from app.powabase_client import get_chat_session_by_token, get_public_share_session_by_token, query_context_handler
 
 router = APIRouter(prefix="/tools", tags=["tools"])
 
@@ -19,6 +19,13 @@ def session_context_tool_route(body: SessionContextToolBody):
         return PlainTextResponse("No session context available: missing session token.")
 
     rows, status_code = get_chat_session_by_token(session_token)
+    if status_code >= 400 or not rows:
+        # Not a real user's chat session -- check whether it's an anonymous
+        # public-share session instead. One tool, one endpoint, two tables:
+        # see Decision 1 at the top of this plan for why this isn't a
+        # second tool/endpoint.
+        rows, status_code = get_public_share_session_by_token(session_token)
+
     if status_code >= 400 or not rows:
         return PlainTextResponse("No session context available: invalid session token.")
 
