@@ -12,8 +12,11 @@ from app.powabase_client import (
     delete_agent_registry_row,
     delete_agent_session_rows,
     delete_knowledge_base,
+    delete_public_share,
     ensure_session_context_tool,
     get_agent_session_kb_ids,
+    get_public_share_session_kb_ids,
+    get_public_shares_for_agent,
     insert_agent_registry_row,
     link_agent_knowledge_base,
     list_agent_registry_rows,
@@ -90,6 +93,22 @@ def delete_agent_route(agent_id: str, user: AuthedUser = Depends(get_current_use
         _, sc = delete_knowledge_base(kb_id)
         if sc >= 400:
             raise HTTPException(status_code=sc, detail="Failed to delete agent's knowledge base")
+
+    share_rows, status_code = get_public_shares_for_agent(agent_id)
+    if status_code >= 400:
+        raise HTTPException(status_code=status_code, detail="Failed to look up agent's public shares")
+    for share_row in share_rows:
+        share_id = share_row["share_id"]
+        share_session_kb_rows, sc = get_public_share_session_kb_ids(share_id)
+        if sc >= 400:
+            raise HTTPException(status_code=sc, detail=f"Failed to look up sessions for public share {share_id}")
+        for row in share_session_kb_rows:
+            _, sc = delete_knowledge_base(row["kb_id"])
+            if sc >= 400:
+                raise HTTPException(status_code=sc, detail=f"Failed to delete session knowledge base {row['kb_id']}")
+        _, sc = delete_public_share(share_id)
+        if sc >= 400:
+            raise HTTPException(status_code=sc, detail=f"Failed to delete public share {share_id}")
 
     session_kb_rows, status_code = get_agent_session_kb_ids(user.access_token, agent_id)
     if status_code >= 400:
