@@ -715,13 +715,23 @@ r = requests.options(f"{APP}/agents", headers={
 print("existing-route preflight from allowed origin, ACAO header:", r.headers.get("access-control-allow-origin"))
 assert r.headers.get("access-control-allow-origin") == "http://localhost:5173"
 
-# 3. New public route allows ANY origin.
+# 3. New public route allows ANY origin. Note: with allow_origins=["*"] AND
+#    allow_credentials=False (this route's exact config), Starlette's
+#    CORSMiddleware legitimately returns the literal "*" on preflight, not
+#    an echo of the request Origin -- that echo-back behavior only happens
+#    when allow_credentials=True (browsers reject a literal "*" combined
+#    with credentials, so Starlette is forced to echo in that case; with
+#    credentials off it isn't, and returns the simpler literal wildcard).
+#    Verified directly against starlette.middleware.cors.CORSMiddleware's
+#    source: preflight_explicit_allow_origin = not allow_all_origins or
+#    allow_credentials -- for this route that's False, so the origin is
+#    never echoed.
 r = requests.options(f"{APP}/public/agents", headers={
     "Origin": "https://some-random-site.example.com",
     "Access-Control-Request-Method": "POST",
 })
 print("public-route preflight from arbitrary origin, ACAO header:", r.headers.get("access-control-allow-origin"))
-assert r.headers.get("access-control-allow-origin") == "https://some-random-site.example.com"
+assert r.headers.get("access-control-allow-origin") == "*"
 
 # 4. POST /public/agents requires auth.
 r = requests.post(f"{APP}/public/agents", json={"name": "no-auth-test"})
@@ -729,13 +739,22 @@ print("POST /public/agents with no auth:", r.status_code)
 assert r.status_code == 401
 
 # 5. POST /public/agents works when authenticated, creates share + registry row.
+#    Pass a source_agent_id from the start -- in real usage this is the id of
+#    an EXISTING agent whose detail page the "Get shareable link" button was
+#    clicked from, never the newly-created public agent's own id. A fixed
+#    fake UUID stands in for that here so the idempotency check below has a
+#    real, non-null value to match against (the plan's first draft of this
+#    script compared against body["agent_id"], which is a different agent
+#    that was created WITHOUT a source_agent_id -- that combination could
+#    never match, for any correct implementation).
 creds = {"email": "task3-verify@example.com", "password": "TestPass123!"}
 r = requests.post(f"{BASE}/auth/v1/signup", headers={"apikey": ANON, "Authorization": f"Bearer {ANON}", "Content-Type": "application/json"}, json=creds)
 if r.status_code >= 400:
     r = requests.post(f"{BASE}/auth/v1/token", params={"grant_type": "password"}, headers={"apikey": ANON, "Authorization": f"Bearer {ANON}", "Content-Type": "application/json"}, json=creds)
 token = r.json()["access_token"]
 
-r = requests.post(f"{APP}/public/agents", headers={"Authorization": f"Bearer {token}"}, json={"name": "Task3 Public Agent"})
+source_agent_id = "11111111-1111-1111-1111-111111111111"
+r = requests.post(f"{APP}/public/agents", headers={"Authorization": f"Bearer {token}"}, json={"name": "Task3 Public Agent", "source_agent_id": source_agent_id})
 print("POST /public/agents authenticated:", r.status_code, r.json())
 assert r.status_code == 200
 body = r.json()
@@ -748,7 +767,6 @@ assert "Task3 Public Agent" in names
 
 # 6. Idempotency: calling POST /public/agents again with the same
 #    source_agent_id returns the SAME share/agent instead of creating new ones.
-source_agent_id = body["agent_id"]
 r2 = requests.post(f"{APP}/public/agents", headers={"Authorization": f"Bearer {token}"}, json={"name": "Task3 Public Agent", "source_agent_id": source_agent_id})
 print("second call with same source_agent_id:", r2.status_code, r2.json())
 assert r2.status_code == 200
