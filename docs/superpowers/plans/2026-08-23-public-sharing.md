@@ -111,9 +111,19 @@ BASE = settings.powabase_url
 SVC = settings.powabase_service_key
 ANON = settings.powabase_anon_key
 
+# owner_user_id has a real `references auth.users` FK (see the DDL above),
+# so it must be a real user id -- a placeholder all-zeros UUID 409s with a
+# foreign-key violation. Sign up (or sign back in) a throwaway test user,
+# same pattern every other task's verification script uses.
+creds = {"email": "task1-verify@example.com", "password": "TestPass123!"}
+r = requests.post(f"{BASE}/auth/v1/signup", headers={"apikey": ANON, "Authorization": f"Bearer {ANON}", "Content-Type": "application/json"}, json=creds)
+if r.status_code >= 400:
+    r = requests.post(f"{BASE}/auth/v1/token", params={"grant_type": "password"}, headers={"apikey": ANON, "Authorization": f"Bearer {ANON}", "Content-Type": "application/json"}, json=creds)
+real_user_id = r.json()["user"]["id"]
+
 fake_share = {
     "share_id": "verify-task1-share",
-    "owner_user_id": "00000000-0000-0000-0000-000000000000",
+    "owner_user_id": real_user_id,
     "agent_id": "00000000-0000-0000-0000-000000000001",
     "kb_id": "00000000-0000-0000-0000-000000000002",
 }
