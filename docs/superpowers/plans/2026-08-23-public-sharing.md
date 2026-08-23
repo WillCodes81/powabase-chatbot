@@ -1115,16 +1115,32 @@ doc = io.BytesIO(b"The verification codeword for task 5 is ZEBRA-QUARTZ-77.")
 r = requests.post(f"{APP}/public/{share_id}/sessions/anon-task5-1/attach-document", files={"file": ("codeword.txt", doc, "text/plain")})
 print("attach-document:", r.status_code, r.json())
 assert r.status_code == 200 and r.json()["kb_id"]
+kb_id_1 = r.json()["kb_id"]
 
-r = requests.post(f"{APP}/public/{share_id}/chat", json={"message": "What is the verification codeword mentioned in my uploaded document?", "anon_session_id": "anon-task5-1"})
-print("chat referencing attached doc:", r.status_code, r.json())
-assert r.status_code == 200 and "zebra" in r.json()["content"].lower() and "quartz" in r.json()["content"].lower()
+# Re-attaching for the SAME anon_session_id must reuse the same lazily-created
+# KB, not spin up a second one.
+doc2 = io.BytesIO(b"A second document for the same visitor.")
+r = requests.post(f"{APP}/public/{share_id}/sessions/anon-task5-1/attach-document", files={"file": ("second.txt", doc2, "text/plain")})
+print("second attach, same anon_session_id:", r.status_code, r.json()["kb_id"])
+assert r.status_code == 200 and r.json()["kb_id"] == kb_id_1, "must reuse the same session KB, not create a new one"
+
+# A DIFFERENT anon_session_id on the same share_id must get its own, distinct KB.
+doc3 = io.BytesIO(b"A different visitor's document.")
+r = requests.post(f"{APP}/public/{share_id}/sessions/anon-task5-2/attach-document", files={"file": ("other.txt", doc3, "text/plain")})
+print("attach for a different anon_session_id:", r.status_code, r.json()["kb_id"])
+assert r.status_code == 200 and r.json()["kb_id"] != kb_id_1, "a different visitor must get an isolated KB, not share one"
+
+r = requests.post(f"{APP}/public/unknown-share-id/sessions/anon-x/attach-document", files={"file": ("x.txt", io.BytesIO(b"x"), "text/plain")})
+print("unknown share_id:", r.status_code)
+assert r.status_code == 404
 
 print("\nTASK 5 ATTACH-DOCUMENT VERIFIED")
 EOF
 ```
 
 Expected output ends with `TASK 5 ATTACH-DOCUMENT VERIFIED`.
+
+**Note on scope:** this script deliberately stops at "the document is attached, indexed, and isolated per `(share_id, anon_session_id)`" — it does NOT verify that the agent can actually retrieve the attached content through a chat call. That full round trip requires `session_context_search`'s tool endpoint to resolve tokens against `public_share_sessions`, which is Task 6's fix (`app/routes/tools.py`), not written yet at this point in the plan. Task 6's own live verification (two visitors, fabricated codewords, checked in both directions) is where that round trip is actually proven — asserting it here would test code that doesn't exist yet. (An earlier draft of this script asserted exactly that prematurely; found live by the Task 5 implementer, who correctly declined to implement Task 6 out of order and ran this properly-scoped check instead.)
 
 - [ ] **Step 3: Commit**
 
