@@ -1,5 +1,6 @@
 import json
 import logging
+import secrets
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -1140,3 +1141,212 @@ def delete_chatbot_session_rows(access_token: str, chatbot_id: str) -> tuple[dic
     if response.status_code >= 400:
         return response.json(), response.status_code
     return {}, response.status_code
+
+
+def insert_public_share_row(
+    access_token: str, owner_user_id: str, share_id: str, agent_id: str, kb_id: str, source_agent_id: str | None = None
+) -> tuple[dict, int]:
+    response = requests.post(
+        f"{settings.powabase_url}/rest/v1/public_shares",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+            "Content-Type": "application/json",
+            "Prefer": "return=representation",
+        },
+        json={
+            "share_id": share_id,
+            "owner_user_id": owner_user_id,
+            "agent_id": agent_id,
+            "kb_id": kb_id,
+            "source_agent_id": source_agent_id,
+        },
+    )
+    data = response.json()
+    if isinstance(data, list):
+        data = data[0] if data else {}
+    return data, response.status_code
+
+
+def get_public_share_by_source_agent_id(access_token: str, source_agent_id: str) -> tuple[list, int]:
+    """
+    Owner-scoped (anon key + the CALLING owner's own access token, not the
+    service key) -- RLS's existing public_shares_select_own policy
+    (owner_user_id = auth.uid()) does the ownership filtering for free, the
+    same way list_agent_registry_rows/get_agent_registry_entry already rely
+    on RLS rather than an app-level ownership check. Used both by Task 3's
+    idempotent-create check and by the GET /public/agents/by-source/{id}
+    lookup route.
+    """
+    response = requests.get(
+        f"{settings.powabase_url}/rest/v1/public_shares",
+        headers={
+            "apikey": settings.powabase_anon_key,
+            "Authorization": f"Bearer {access_token}",
+        },
+        params={"source_agent_id": f"eq.{source_agent_id}", "select": "share_id,agent_id,created_at"},
+    )
+    return response.json(), response.status_code
+
+
+def get_public_share(share_id: str) -> tuple[list, int]:
+    # Service key, deliberately: an anonymous visitor's request carries no
+    # end-user identity to scope this with, same reasoning as
+    # get_chat_session_by_token.
+    response = requests.get(
+        f"{settings.powabase_url}/rest/v1/public_shares",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+        },
+        params={"share_id": f"eq.{share_id}", "select": "agent_id,kb_id,owner_user_id"},
+    )
+    return response.json(), response.status_code
+
+
+def get_public_shares_for_agent(agent_id: str) -> tuple[list, int]:
+    response = requests.get(
+        f"{settings.powabase_url}/rest/v1/public_shares",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+        },
+        params={"agent_id": f"eq.{agent_id}", "select": "share_id"},
+    )
+    return response.json(), response.status_code
+
+
+def delete_public_share(share_id: str) -> tuple[dict, int]:
+    response = requests.delete(
+        f"{settings.powabase_url}/rest/v1/public_shares",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+        },
+        params={"share_id": f"eq.{share_id}"},
+    )
+    if response.status_code >= 400:
+        return response.json(), response.status_code
+    return {}, response.status_code
+
+
+def get_public_share_session(share_id: str, anon_session_id: str) -> tuple[list, int]:
+    response = requests.get(
+        f"{settings.powabase_url}/rest/v1/public_share_sessions",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+        },
+        params={
+            "share_id": f"eq.{share_id}",
+            "anon_session_id": f"eq.{anon_session_id}",
+            "select": "id,session_token,powabase_session_id,kb_id",
+        },
+    )
+    return response.json(), response.status_code
+
+
+def get_or_create_public_share_session(share_id: str, anon_session_id: str) -> dict:
+    """
+    Get-or-create keyed by the (share_id, anon_session_id) unique constraint --
+    same ignore-duplicates-then-reselect race handling as ensure_user_credits_row,
+    since two concurrent first requests from the same freshly-generated
+    anon_session_id (e.g. a double-click) must not create two rows with two
+    different session_tokens for the same visitor.
+    """
+    existing, status_code = get_public_share_session(share_id, anon_session_id)
+    if status_code < 400 and existing:
+        return existing[0]
+
+    session_token = secrets.token_urlsafe(32)
+    response = requests.post(
+        f"{settings.powabase_url}/rest/v1/public_share_sessions",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+            "Content-Type": "application/json",
+            "Prefer": "resolution=ignore-duplicates,return=representation",
+        },
+        json={"share_id": share_id, "anon_session_id": anon_session_id, "session_token": session_token},
+    )
+    data = response.json()
+    if isinstance(data, list) and data:
+        return data[0]
+
+    existing, status_code = get_public_share_session(share_id, anon_session_id)
+    return existing[0]
+
+
+def get_public_share_session_by_token(session_token: str) -> tuple[list, int]:
+    response = requests.get(
+        f"{settings.powabase_url}/rest/v1/public_share_sessions",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+        },
+        params={"session_token": f"eq.{session_token}", "select": "kb_id"},
+    )
+    return response.json(), response.status_code
+
+
+def get_public_share_session_kb_ids(share_id: str) -> tuple[list, int]:
+    response = requests.get(
+        f"{settings.powabase_url}/rest/v1/public_share_sessions",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+        },
+        params={"share_id": f"eq.{share_id}", "select": "kb_id", "kb_id": "not.is.null"},
+    )
+    return response.json(), response.status_code
+
+
+def update_public_share_session_powabase_id(share_id: str, anon_session_id: str, powabase_session_id: str) -> None:
+    requests.patch(
+        f"{settings.powabase_url}/rest/v1/public_share_sessions",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+            "Content-Type": "application/json",
+        },
+        params={"share_id": f"eq.{share_id}", "anon_session_id": f"eq.{anon_session_id}"},
+        json={"powabase_session_id": powabase_session_id},
+    )
+
+
+def update_public_share_session_kb_id(share_id: str, anon_session_id: str, kb_id: str) -> None:
+    requests.patch(
+        f"{settings.powabase_url}/rest/v1/public_share_sessions",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+            "Content-Type": "application/json",
+        },
+        params={"share_id": f"eq.{share_id}", "anon_session_id": f"eq.{anon_session_id}"},
+        json={"kb_id": kb_id},
+    )
+
+
+def get_public_share_usage_total() -> int:
+    response = requests.get(
+        f"{settings.powabase_url}/rest/v1/public_share_usage",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+        },
+        params={"id": "eq.1", "select": "tokens_used_total"},
+    )
+    rows = response.json()
+    return rows[0]["tokens_used_total"] if rows else 0
+
+
+def increment_public_share_usage(tokens: int) -> None:
+    requests.post(
+        f"{settings.powabase_url}/rest/v1/rpc/increment_public_share_usage",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+            "Content-Type": "application/json",
+        },
+        json={"p_tokens": tokens},
+    )
