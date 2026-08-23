@@ -940,20 +940,29 @@ def list_chatbot_sessions(access_token: str, chatbot_id: str) -> list:
     return response.json(), response.status_code
 
 
-def get_user_credits(access_token: str) -> tuple[list, int]:
+def get_user_credits(access_token: str, user_id: str) -> tuple[list, int]:
+    # Explicitly filtered by user_id rather than relying solely on RLS to
+    # scope the result to the caller: that's correct for a real end-user
+    # access_token (RLS already restricts them to their own row, so this
+    # filter is a no-op), but ensure_user_credits_row is also called with
+    # the Powabase service-role key (public.py's public_chat_route, acting
+    # "as" the agent owner) -- service-role requests bypass RLS entirely,
+    # so an unfiltered query would return every user's row in the table and
+    # existing[0] would silently pick an arbitrary one instead of this
+    # user's. Verified live: with the service key this returned 97 rows.
     response = requests.get(
         f"{settings.powabase_url}/rest/v1/user_credits",
         headers={
             "apikey": settings.powabase_anon_key,
             "Authorization": f"Bearer {access_token}",
         },
-        params={"select": "user_id,tokens_remaining,tokens_used_total,created_at"},
+        params={"user_id": f"eq.{user_id}", "select": "user_id,tokens_remaining,tokens_used_total,created_at"},
     )
     return response.json(), response.status_code
 
 
 def ensure_user_credits_row(access_token: str, user_id: str) -> dict:
-    existing, status_code = get_user_credits(access_token)
+    existing, status_code = get_user_credits(access_token, user_id)
     if status_code < 400 and existing:
         return existing[0]
 
@@ -973,7 +982,7 @@ def ensure_user_credits_row(access_token: str, user_id: str) -> dict:
 
     # A concurrent request created the row first (or ignore-duplicates
     # returned no representation for the no-op) -- re-select.
-    existing, status_code = get_user_credits(access_token)
+    existing, status_code = get_user_credits(access_token, user_id)
     return existing[0]
 
 

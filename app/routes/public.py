@@ -1,8 +1,11 @@
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
+from slowapi.util import get_remote_address
 
+from app.config import settings
+from app.credit_lock import deduct_credits_logged, user_credit_lock
 from app.deps import AuthedUser, get_current_user
 from app.powabase_client import (
     SESSION_CONTEXT_TOOL_NAME,
@@ -10,14 +13,25 @@ from app.powabase_client import (
     create_agent,
     create_knowledge_base,
     ensure_session_context_tool,
+    ensure_user_credits_row,
+    get_or_create_public_share_session,
+    get_public_share,
     get_public_share_by_source_agent_id,
+    get_public_share_usage_total,
+    get_session_messages,
+    increment_public_share_usage,
     insert_agent_registry_row,
     insert_public_share_row,
     link_agent_knowledge_base,
+    run_agent,
+    update_public_share_session_powabase_id,
 )
+from app.rate_limit import limiter
 from app.validation import NonEmptyStr
 
 router = APIRouter(tags=["public"])
+
+PUBLIC_TOKEN_CAP = 100_000
 
 PUBLIC_SHARE_SYSTEM_PROMPT = (
     "You are a helpful assistant. Answer the user's questions clearly and directly.\n\n"
@@ -108,3 +122,83 @@ def get_public_share_by_source_route(source_agent_id: str, user: AuthedUser = De
         raise HTTPException(status_code=404, detail="No public share exists for this agent yet")
     share = rows[0]
     return {"share_id": share["share_id"], "agent_id": share["agent_id"], "created_at": share["created_at"]}
+
+
+class PublicChatRequest(BaseModel):
+    message: NonEmptyStr
+    anon_session_id: NonEmptyStr
+
+
+def _build_public_context_override(powabase_session_id: str | None, session_token: str) -> str:
+    parts = [
+        "[Session tool context]\n"
+        f"Your session_token for the session_context_search tool in this conversation is: {session_token}\n"
+        "Always pass this exact value as the session_token argument when calling session_context_search. "
+        "Never invent, guess, or omit it."
+    ]
+
+    if powabase_session_id:
+        messages_data, status_code = get_session_messages(powabase_session_id)
+        if status_code < 400:
+            transcript = "\n".join(f'{m["role"]}: {m["content"]}' for m in messages_data.get("messages", []))
+            if transcript:
+                parts.append(f"[Prior conversation in this session]\n{transcript}")
+
+    return "\n\n".join(parts)
+
+
+@router.post("/{share_id}/chat")
+@limiter.limit("10/minute", key_func=get_remote_address)
+def public_chat_route(request: Request, share_id: str, req: PublicChatRequest):
+    share_rows, status_code = get_public_share(share_id)
+    if status_code >= 400 or not share_rows:
+        raise HTTPException(status_code=404, detail="Public share not found")
+    share = share_rows[0]
+    agent_id, owner_user_id = share["agent_id"], share["owner_user_id"]
+
+    if get_public_share_usage_total() >= PUBLIC_TOKEN_CAP:
+        raise HTTPException(status_code=429, detail="This public sharing feature has reached its usage limit for now.")
+
+    session = get_or_create_public_share_session(share_id, req.anon_session_id)
+    context_override = _build_public_context_override(session.get("powabase_session_id"), session["session_token"])
+
+    # Charges land on the AGENT OWNER's balance, not the anonymous visitor's --
+    # these functions take access_token as a plain parameter rather than
+    # hardcoding the caller's own token, so passing the service-role key here
+    # (which bypasses the `auth.uid() = user_id` RLS check entirely) lets them
+    # act "as" the owner without the owner being present in this request at all.
+    service_key = settings.powabase_service_key
+
+    # This call outside the lock looks redundant with the one right below it
+    # inside the lock, but it isn't: acquire_credit_lock (in user_credit_lock)
+    # acquires by conditionally UPDATE-ing the user_credits row WHERE
+    # user_id = owner_user_id -- a public share for an owner who has never
+    # triggered row creation any other way (never called their own /chat or
+    # /me/credits) has zero matching rows, so the lock would have nothing to
+    # match and acquire_credit_lock would return False on every attempt until
+    # it times out and raises 429. This mirrors chat.py's identical
+    # pre-lock ensure_user_credits_row call and comment -- do not remove it.
+    ensure_user_credits_row(service_key, owner_user_id)
+
+    with user_credit_lock(service_key, owner_user_id):
+        credits_row = ensure_user_credits_row(service_key, owner_user_id)
+        if credits_row["tokens_remaining"] <= 0:
+            raise HTTPException(status_code=503, detail="This assistant is temporarily unavailable. Please try again later.")
+
+        data, status_code = run_agent(
+            agent_id, req.message,
+            session_id=session.get("powabase_session_id"),
+            context_override=context_override,
+        )
+        if status_code >= 400:
+            raise HTTPException(status_code=status_code, detail=data)
+
+        if not session.get("powabase_session_id"):
+            update_public_share_session_powabase_id(share_id, req.anon_session_id, data["session_id"])
+
+        usage = data.get("usage")
+        if usage and usage.get("total_tokens"):
+            deduct_credits_logged(service_key, owner_user_id, usage["total_tokens"])
+            increment_public_share_usage(usage["total_tokens"])
+
+    return {"content": data["content"]}
