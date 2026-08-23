@@ -1,6 +1,6 @@
 import secrets
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from pydantic import BaseModel
 from slowapi.util import get_remote_address
 
@@ -9,6 +9,7 @@ from app.credit_lock import deduct_credits_logged, user_credit_lock
 from app.deps import AuthedUser, get_current_user
 from app.powabase_client import (
     SESSION_CONTEXT_TOOL_NAME,
+    add_source_to_kb,
     assign_tool_to_agent,
     create_agent,
     create_knowledge_base,
@@ -24,7 +25,10 @@ from app.powabase_client import (
     insert_public_share_row,
     link_agent_knowledge_base,
     run_agent,
+    update_public_share_session_kb_id,
     update_public_share_session_powabase_id,
+    upload_and_resolve_source_id,
+    wait_for_source_extraction,
 )
 from app.rate_limit import limiter
 from app.validation import NonEmptyStr
@@ -202,3 +206,51 @@ def public_chat_route(request: Request, share_id: str, req: PublicChatRequest):
             increment_public_share_usage(usage["total_tokens"])
 
     return {"content": data["content"]}
+
+
+@router.post("/{share_id}/sessions/{anon_session_id}/attach-document")
+@limiter.limit("10/minute", key_func=get_remote_address)
+def public_attach_document_route(request: Request, share_id: str, anon_session_id: str, file: UploadFile = File(...)):
+    """
+    Mirrors sessions.py's attach_document_route exactly, but keyed by
+    anon_session_id instead of a real user's session row -- this is what
+    isolates one anonymous visitor's document from a different visitor
+    using the same public share_id (see Task 6's live cross-session
+    verification).
+    """
+    share_rows, status_code = get_public_share(share_id)
+    if status_code >= 400 or not share_rows:
+        raise HTTPException(status_code=404, detail="Public share not found")
+
+    session = get_or_create_public_share_session(share_id, anon_session_id)
+    kb_id = session.get("kb_id")
+    if not kb_id:
+        kb_data, status_code = create_knowledge_base(f"public-session-{share_id}-{anon_session_id}")
+        if status_code >= 400:
+            raise HTTPException(status_code=status_code, detail=kb_data)
+        kb_id = kb_data["id"]
+        update_public_share_session_kb_id(share_id, anon_session_id, kb_id)
+
+    file_bytes = file.file.read()
+
+    source_id, error = upload_and_resolve_source_id(file_bytes, file.filename)
+    if error:
+        error_data, error_status = error
+        raise HTTPException(status_code=error_status, detail=error_data)
+
+    data, status_code = wait_for_source_extraction(source_id)
+    if status_code >= 400:
+        raise HTTPException(status_code=status_code, detail=data)
+
+    extraction_status = data["extraction_status"]
+    if extraction_status != "extracted":
+        raise HTTPException(
+            status_code=422,
+            detail=f"Document extraction ended in status '{extraction_status}', cannot index",
+        )
+
+    index_data, status_code = add_source_to_kb(kb_id, source_id)
+    if status_code >= 400:
+        raise HTTPException(status_code=status_code, detail=index_data)
+
+    return {"kb_id": kb_id, "source_id": source_id, "filename": file.filename, **index_data}
