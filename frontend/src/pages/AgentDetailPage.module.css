@@ -22,6 +22,9 @@
 .uploadTile {
   padding: var(--space-5);
 }
+.shareHeading {
+  margin-bottom: var(--space-5);
+}
 .shareIntro {
   margin-bottom: var(--space-5);
 }
