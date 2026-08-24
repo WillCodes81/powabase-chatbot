@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { ApiError } from '../api/client';
 import { listAgents, deleteAgent } from '../api/agents';
 import { listSessions, getSessionMessages, deleteSession, attachDocumentToSession, updateSessionLabel } from '../api/sessions';
 import { ingestFile } from '../api/ingest';
@@ -44,9 +45,15 @@ export function AgentDetailPage() {
         setShareId(result.share_id);
         setShareUrl(`${window.location.origin}/share/${result.share_id}`);
       })
-      .catch(() => {
-        // 404 -- no public share exists for this agent yet, which is the
-        // normal case. Nothing to restore, nothing to show as an error.
+      .catch((err) => {
+        // 404 is the normal, expected case -- no public share exists for
+        // this agent yet. Anything else (a real 500, a network failure) is
+        // a genuine problem and must surface the same way every other
+        // error on this page does (shareError -> ErrorBanner), not be
+        // silently swallowed and misread as "no share yet."
+        if (!(err instanceof ApiError) || err.status !== 404) {
+          setShareError(describeError(err));
+        }
       })
       .finally(() => setShareChecked(true));
   }, [agentId]);
