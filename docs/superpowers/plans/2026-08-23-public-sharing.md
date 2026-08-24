@@ -1519,10 +1519,11 @@ Add imports:
 
 ```typescript
 import { useEffect, useState } from 'react';
+import { ApiError } from '../api/client';
 import { createPublicShare, getPublicShareBySource } from '../api/publicShare';
 ```
 
-(`useState` is already imported at the top of this file — add `useEffect` alongside it, and add the `../api/publicShare` import alongside the other `../api/*` imports.)
+(`useState` is already imported at the top of this file — add `useEffect` alongside it, and add the `../api/publicShare`/`../api/client` imports alongside the other `../api/*` imports.)
 
 Add state, an auto-lookup effect, and a create handler inside the `AgentDetailPage` function body, near the other `useState` calls (`agentId` is already in scope from the existing `useParams` call at the top of this component):
 
@@ -1540,9 +1541,15 @@ Add state, an auto-lookup effect, and a create handler inside the `AgentDetailPa
         setShareId(result.share_id);
         setShareUrl(`${window.location.origin}/share/${result.share_id}`);
       })
-      .catch(() => {
-        // 404 -- no public share exists for this agent yet, which is the
-        // normal case. Nothing to restore, nothing to show as an error.
+      .catch((err) => {
+        // 404 is the normal, expected case -- no public share exists for
+        // this agent yet. Anything else (a real 500, a network failure) is
+        // a genuine problem and must surface the same way every other
+        // error on this page does (shareError -> ErrorBanner), not be
+        // silently swallowed and misread as "no share yet."
+        if (!(err instanceof ApiError) || err.status !== 404) {
+          setShareError(describeError(err));
+        }
       })
       .finally(() => setShareChecked(true));
   }, [agentId]);
