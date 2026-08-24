@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 import {
   attachPublicDocument,
@@ -8,6 +8,7 @@ import {
   sendPublicChatMessage,
   type PublicChatMessage,
 } from '../lib/publicShareClient';
+import { FileUploadButton } from '../components/FileUploadButton';
 import styles from './PublicSharePage.module.css';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
@@ -18,8 +19,6 @@ export function PublicSharePage() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [uploadStatus, setUploadStatus] = useState<string | null>(null);
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!shareId) return;
@@ -52,21 +51,6 @@ export function PublicSharePage() {
     clearPublicSession(shareId);
     setMessages([]);
     setError(null);
-    setUploadStatus(null);
-  }
-
-  async function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file || !shareId) return;
-    setUploadStatus('Uploading…');
-    try {
-      const result = await attachPublicDocument(API_BASE_URL, shareId, file);
-      setUploadStatus(`Attached: ${result.filename}`);
-    } catch (err) {
-      setUploadStatus(err instanceof Error ? err.message : 'Upload failed.');
-    } finally {
-      if (fileInputRef.current) fileInputRef.current.value = '';
-    }
   }
 
   if (!shareId) return null;
@@ -80,33 +64,46 @@ export function PublicSharePage() {
         </button>
       </div>
 
-      <div className={styles.messages}>
-        {messages.map((m, i) => (
-          <div key={i} className={`${styles.message} ${m.role === 'user' ? styles.user : styles.assistant}`}>
-            {m.content}
-          </div>
-        ))}
-      </div>
-
-      {error && <p role="alert">{error}</p>}
-
-      <div>
-        <input ref={fileInputRef} type="file" onChange={handleFileChange} />
-        {uploadStatus && <p>{uploadStatus}</p>}
-      </div>
-
-      <div className={styles.inputRow}>
-        <input
-          type="text"
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-          placeholder="Type a message…"
-          disabled={sending}
+      <div className={styles.uploadRow}>
+        <FileUploadButton
+          id="public-share-attach"
+          label="Attach a document"
+          helpText="Available only in this conversation."
+          onUpload={(file) => attachPublicDocument(API_BASE_URL, shareId, file)}
         />
-        <button type="button" className="btn btn-primary" onClick={handleSend} disabled={sending || !input.trim()}>
-          {sending ? 'Sending…' : 'Send'}
-        </button>
+      </div>
+
+      <div className={styles.panel}>
+        <div className={styles.messages}>
+          {messages.length === 0 && !sending && <p className={styles.empty}>Say something to start the conversation.</p>}
+          {messages.map((m, i) => (
+            <div key={i} className={m.role === 'user' ? styles.bubbleUser : styles.bubbleAssistant}>
+              {m.content}
+            </div>
+          ))}
+          {sending && (
+            <div className={styles.bubbleAssistant}>
+              <span className={styles.empty}>Thinking…</span>
+            </div>
+          )}
+        </div>
+
+        {error && <div className={styles.error}>{error}</div>}
+
+        <div className={styles.inputRow}>
+          <input
+            className="input"
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+            placeholder="Type a message…"
+            disabled={sending}
+          />
+          <button type="button" className="btn btn-primary" onClick={handleSend} disabled={sending || !input.trim()}>
+            {sending ? 'Sending…' : 'Send'}
+          </button>
+        </div>
       </div>
     </div>
   );
