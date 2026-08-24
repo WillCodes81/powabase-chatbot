@@ -233,6 +233,9 @@ def public_attach_document_route(request: Request, share_id: str, anon_session_i
     if status_code >= 400 or not share_rows:
         raise HTTPException(status_code=404, detail="Public share not found")
 
+    if get_public_share_usage_total() >= PUBLIC_TOKEN_CAP:
+        raise HTTPException(status_code=429, detail="This public sharing feature has reached its usage limit for now.")
+
     session = get_or_create_public_share_session(share_id, anon_session_id)
     kb_id = session.get("kb_id")
     if not kb_id:
