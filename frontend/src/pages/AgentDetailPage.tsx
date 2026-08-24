@@ -147,7 +147,7 @@ export function AgentDetailPage() {
 
       <section className={styles.section}>
         <h2>Public sharing</h2>
-        <p>
+        <p className={styles.shareIntro}>
           Creates a brand-new, separate agent with a fixed assistant prompt and its own knowledge
           base — anyone with the link can chat with it, no account required. This is not the same
           agent or knowledge base as the one above.

@@ -19,6 +19,7 @@ export function PublicSharePage() {
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [sessionKey, setSessionKey] = useState(0);
 
   useEffect(() => {
     if (!shareId) return;
@@ -51,6 +52,7 @@ export function PublicSharePage() {
     clearPublicSession(shareId);
     setMessages([]);
     setError(null);
+    setSessionKey((k) => k + 1);
   }
 
   if (!shareId) return null;
@@ -66,6 +68,7 @@ export function PublicSharePage() {
 
       <div className={styles.uploadRow}>
         <FileUploadButton
+          key={sessionKey}
           id="public-share-attach"
           label="Attach a document"
           helpText="Available only in this conversation."

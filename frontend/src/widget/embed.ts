@@ -112,15 +112,18 @@ function mount() {
   });
 
   const uploadRow = el('div', { padding: '0 16px 12px', display: 'flex', flexDirection: 'column', gap: '4px' });
+  const fileInputId = 'powabase-widget-file-input';
   const fileLabel = el('label', {
     display: 'inline-flex', alignSelf: 'flex-start', border: `1px solid ${BORDER}`, background: SURFACE_RAISED,
     color: TEXT, borderRadius: RADIUS_SM, padding: '6px 12px', fontSize: '12px', fontWeight: '600', cursor: 'pointer',
   });
   fileLabel.textContent = 'Attach a document';
+  fileLabel.htmlFor = fileInputId;
   const fileInput = el('input', {
     position: 'absolute', width: '1px', height: '1px', overflow: 'hidden', clip: 'rect(0 0 0 0)',
   });
   fileInput.type = 'file';
+  fileInput.id = fileInputId;
   const uploadStatus = el('div', { fontSize: '11px', color: TEXT_MUTED });
   uploadRow.append(fileLabel, fileInput, uploadStatus);
 
@@ -182,6 +185,7 @@ function mount() {
     if (sending) return;
     clearPublicSession(shareId);
     messages = [];
+    uploadStatus.textContent = '';
     render();
   });
 
