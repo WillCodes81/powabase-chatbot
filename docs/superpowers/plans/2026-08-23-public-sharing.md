@@ -1926,7 +1926,14 @@ function mount() {
     panel.style.display = panel.style.display === 'none' ? 'flex' : 'none';
   });
 
+  // Guards against the same race Task 10's React page had: clicking New
+  // Session while a send is still in flight must not let that send's
+  // eventual response land on top of (or into) the just-cleared
+  // conversation.
+  let sending = false;
+
   newSessionBtn.addEventListener('click', () => {
+    if (sending) return;
     clearPublicSession(shareId);
     messages = [];
     render();
@@ -1948,7 +1955,9 @@ function mount() {
 
   async function send() {
     const text = textInput.value.trim();
-    if (!text) return;
+    if (!text || sending) return;
+    sending = true;
+    newSessionBtn.disabled = true;
     messages = [...messages, { role: 'user', content: text }];
     saveCachedMessages(shareId, messages);
     textInput.value = '';
@@ -1961,6 +1970,9 @@ function mount() {
     } catch (err) {
       messages = [...messages, { role: 'assistant', content: err instanceof Error ? err.message : 'Error.' }];
       render();
+    } finally {
+      sending = false;
+      newSessionBtn.disabled = false;
     }
   }
 
