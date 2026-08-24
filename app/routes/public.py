@@ -1,6 +1,8 @@
 import secrets
+from pathlib import Path
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse
 from pydantic import BaseModel
 from slowapi.util import get_remote_address
 
@@ -35,6 +37,8 @@ from app.validation import NonEmptyStr
 
 router = APIRouter(tags=["public"])
 
+WIDGET_JS_PATH = Path(__file__).resolve().parents[2] / "frontend" / "dist-widget" / "widget.js"
+
 PUBLIC_TOKEN_CAP = 100_000
 
 PUBLIC_SHARE_SYSTEM_PROMPT = (
@@ -47,6 +51,13 @@ PUBLIC_SHARE_SYSTEM_PROMPT = (
     "Never claim you don't have access to something without first attempting to search for "
     "it using your available tools."
 )
+
+
+@router.get("/widget.js")
+def serve_widget_js():
+    if not WIDGET_JS_PATH.exists():
+        raise HTTPException(status_code=404, detail="Widget bundle not built yet -- run `npm run build:widget` in frontend/")
+    return FileResponse(WIDGET_JS_PATH, media_type="application/javascript")
 
 
 class CreatePublicAgentRequest(BaseModel):
