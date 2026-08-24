@@ -8,12 +8,14 @@ import { CreateAgentPage } from './pages/CreateAgentPage';
 import { CreateChatbotPage } from './pages/CreateChatbotPage';
 import { AgentDetailPage } from './pages/AgentDetailPage';
 import { ChatbotDetailPage } from './pages/ChatbotDetailPage';
+import { PublicSharePage } from './pages/PublicSharePage';
 
 export function App() {
   return (
     <Routes>
       <Route path="/signin" element={<SignInPage />} />
       <Route path="/signup" element={<SignUpPage />} />
+      <Route path="/share/:shareId" element={<PublicSharePage />} />
       <Route
         element={
           <ProtectedRoute>
