@@ -1023,8 +1023,8 @@ git commit -m "feat: add POST /public/{share_id}/chat, charged to the agent owne
 - Modify: `app/routes/public.py` — add the attach-document route.
 
 **Interfaces:**
-- Consumes: `get_public_share`, `get_or_create_public_share_session`, `update_public_share_session_kb_id` (Task 2); `create_knowledge_base`, `upload_and_resolve_source_id`, `wait_for_source_extraction`, `add_source_to_kb` (pre-existing, same functions `sessions.py`'s `attach_document_route` already uses); `limiter`, `get_remote_address` (Task 4 — same IP-keyed rate limit rationale applies here).
-- Produces: `POST /public/{share_id}/sessions/{anon_session_id}/attach-document`, multipart `file`, response `{kb_id, source_id, filename, ...}` — same shape as the existing authenticated attach-document routes. Rate-limited at `10/minute` per IP, same as Task 4's chat route.
+- Consumes: `get_public_share`, `get_or_create_public_share_session`, `update_public_share_session_kb_id`, `get_public_share_usage_total` (Task 2); `create_knowledge_base`, `upload_and_resolve_source_id`, `wait_for_source_extraction`, `add_source_to_kb` (pre-existing, same functions `sessions.py`'s `attach_document_route` already uses); `limiter`, `get_remote_address`, `PUBLIC_TOKEN_CAP` (Task 4 — same IP-keyed rate limit rationale applies here, and the same global cap: without it, an anonymous caller could mint unlimited `anon_session_id` values, each lazily creating a new Powabase knowledge base with no cost control beyond the per-IP rate limit — found in the final whole-branch review).
+- Produces: `POST /public/{share_id}/sessions/{anon_session_id}/attach-document`, multipart `file`, response `{kb_id, source_id, filename, ...}` — same shape as the existing authenticated attach-document routes. Rate-limited at `10/minute` per IP, same as Task 4's chat route. `429` if the global 100k-token cap is already exceeded (same check and message as Task 4's chat route — attaching a document doesn't itself spend tokens, but gating it on the same cap closes the unbounded-KB-creation gap once the cap is hit for any reason).
 
 - [ ] **Step 1: Add to `app/routes/public.py`**
 
@@ -1036,6 +1036,8 @@ from app.powabase_client import (
     upload_and_resolve_source_id,
     wait_for_source_extraction,
 )
+# get_public_share_usage_total and PUBLIC_TOKEN_CAP are already in scope --
+# both were imported/defined by Task 4, earlier in this same file.
 
 
 @router.post("/{share_id}/sessions/{anon_session_id}/attach-document")
@@ -1051,6 +1053,9 @@ def public_attach_document_route(request: Request, share_id: str, anon_session_i
     share_rows, status_code = get_public_share(share_id)
     if status_code >= 400 or not share_rows:
         raise HTTPException(status_code=404, detail="Public share not found")
+
+    if get_public_share_usage_total() >= PUBLIC_TOKEN_CAP:
+        raise HTTPException(status_code=429, detail="This public sharing feature has reached its usage limit for now.")
 
     session = get_or_create_public_share_session(share_id, anon_session_id)
     kb_id = session.get("kb_id")
@@ -1133,6 +1138,17 @@ assert r.status_code == 200 and r.json()["kb_id"] != kb_id_1, "a different visit
 r = requests.post(f"{APP}/public/unknown-share-id/sessions/anon-x/attach-document", files={"file": ("x.txt", io.BytesIO(b"x"), "text/plain")})
 print("unknown share_id:", r.status_code)
 assert r.status_code == 404
+
+# Global cap gates attach-document too, closing the unbounded-KB-creation gap
+# an attacker could otherwise exploit by minting unlimited anon_session_id
+# values -- found in the final whole-branch review.
+SVC = settings.powabase_service_key
+requests.patch(f"{BASE}/rest/v1/public_share_usage", headers={"apikey": SVC, "Authorization": f"Bearer {SVC}", "Content-Type": "application/json"}, params={"id": "eq.1"}, json={"tokens_used_total": 100_000})
+r = requests.post(f"{APP}/public/{share_id}/sessions/anon-task5-cap/attach-document", files={"file": ("capped.txt", io.BytesIO(b"should be rejected"), "text/plain")})
+print("attach-document once global cap is hit:", r.status_code, r.json())
+assert r.status_code == 429
+assert r.json()["detail"] == "This public sharing feature has reached its usage limit for now."
+requests.patch(f"{BASE}/rest/v1/public_share_usage", headers={"apikey": SVC, "Authorization": f"Bearer {SVC}", "Content-Type": "application/json"}, params={"id": "eq.1"}, json={"tokens_used_total": 0})
 
 print("\nTASK 5 ATTACH-DOCUMENT VERIFIED")
 EOF
