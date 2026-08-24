@@ -161,6 +161,10 @@ export function AgentDetailPage() {
         {shareUrl && shareId && (
           <div className={styles.uploadTile}>
             <p className="mono">{shareUrl}</p>
+            <p>Embed on another site:</p>
+            <pre className="mono">
+{`<script src="${import.meta.env.VITE_API_BASE_URL}/public/widget.js" data-share-id="${shareId}" data-api-base="${import.meta.env.VITE_API_BASE_URL}"></script>`}
+            </pre>
           </div>
         )}
       </section>
