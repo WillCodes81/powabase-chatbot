@@ -75,7 +75,7 @@ export function PublicSharePage() {
     <div className={styles.page}>
       <div className={styles.header}>
         <h1>Chat</h1>
-        <button type="button" className="btn" onClick={handleNewSession}>
+        <button type="button" className="btn" onClick={handleNewSession} disabled={sending}>
           New Session
         </button>
       </div>
