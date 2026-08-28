@@ -38,6 +38,7 @@ from app.validation import NonEmptyStr
 router = APIRouter(tags=["public"])
 
 WIDGET_JS_PATH = Path(__file__).resolve().parents[2] / "frontend" / "dist-widget" / "widget.js"
+TEST_EMBED_SITE_PATH = Path(__file__).resolve().parents[2] / "frontend" / "test-embed-site" / "index.html"
 
 PUBLIC_TOKEN_CAP = 100_000
 
@@ -58,6 +59,19 @@ def serve_widget_js():
     if not WIDGET_JS_PATH.exists():
         raise HTTPException(status_code=404, detail="Widget bundle not built yet -- run `npm run build:widget` in frontend/")
     return FileResponse(WIDGET_JS_PATH, media_type="application/javascript")
+
+
+@router.get("/test-site")
+def serve_test_embed_site():
+    """
+    Manual-testing convenience only: serves frontend/test-embed-site/index.html
+    so it's reachable over a real https:// URL (e.g. through the ngrok tunnel
+    this app is normally run behind) instead of a local file:// path, which
+    doesn't resolve from outside this machine's own filesystem.
+    """
+    if not TEST_EMBED_SITE_PATH.exists():
+        raise HTTPException(status_code=404, detail="Test embed site not found")
+    return FileResponse(TEST_EMBED_SITE_PATH, media_type="text/html")
 
 
 class CreatePublicAgentRequest(BaseModel):
