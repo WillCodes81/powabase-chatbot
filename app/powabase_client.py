@@ -1184,8 +1184,8 @@ def get_public_share_by_source_agent_id(access_token: str, source_agent_id: str)
     (owner_user_id = auth.uid()) does the ownership filtering for free, the
     same way list_agent_registry_rows/get_agent_registry_entry already rely
     on RLS rather than an app-level ownership check. Used both by Task 3's
-    idempotent-create check and by the GET /public/agents/by-source/{id}
-    lookup route.
+    idempotent-create check and by the GET /agents/by-source/{id}
+    lookup route (app/routes/agents.py).
     """
     response = requests.get(
         f"{settings.powabase_url}/rest/v1/public_shares",
@@ -1194,6 +1194,27 @@ def get_public_share_by_source_agent_id(access_token: str, source_agent_id: str)
             "Authorization": f"Bearer {access_token}",
         },
         params={"source_agent_id": f"eq.{source_agent_id}", "select": "share_id,agent_id,created_at"},
+    )
+    return response.json(), response.status_code
+
+
+def get_public_share_by_source_agent_id_service(source_agent_id: str) -> tuple[list, int]:
+    """
+    Service-key variant of get_public_share_by_source_agent_id, deliberately
+    NOT scoped by the caller's own access token/RLS -- used by
+    get_owned_public_share, which needs the row's owner_user_id to compare
+    against the caller's id explicitly in Python. public_share_sessions has
+    no RLS at all, so ownership of the data in that table has to be
+    established here, against the public_shares row, before it's ever
+    queried -- RLS alone can't be trusted to do it.
+    """
+    response = requests.get(
+        f"{settings.powabase_url}/rest/v1/public_shares",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+        },
+        params={"source_agent_id": f"eq.{source_agent_id}", "select": "share_id,agent_id,owner_user_id,created_at"},
     )
     return response.json(), response.status_code
 
@@ -1306,6 +1327,38 @@ def get_public_share_session_kb_ids(share_id: str) -> tuple[list, int]:
             "Authorization": f"Bearer {settings.powabase_service_key}",
         },
         params={"share_id": f"eq.{share_id}", "select": "kb_id", "kb_id": "not.is.null"},
+    )
+    return response.json(), response.status_code
+
+
+def get_public_share_sessions(share_id: str) -> tuple[list, int]:
+    response = requests.get(
+        f"{settings.powabase_url}/rest/v1/public_share_sessions",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+        },
+        params={
+            "share_id": f"eq.{share_id}",
+            "select": "id,anon_session_id,created_at,kb_id,powabase_session_id",
+            "order": "created_at.desc",
+        },
+    )
+    return response.json(), response.status_code
+
+
+def get_public_share_session_by_id(share_id: str, session_row_id: str) -> tuple[list, int]:
+    response = requests.get(
+        f"{settings.powabase_url}/rest/v1/public_share_sessions",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+        },
+        params={
+            "id": f"eq.{session_row_id}",
+            "share_id": f"eq.{share_id}",
+            "select": "id,anon_session_id,created_at,kb_id,powabase_session_id",
+        },
     )
     return response.json(), response.status_code
 

@@ -140,19 +140,6 @@ def create_public_agent_route(req: CreatePublicAgentRequest, user: AuthedUser = 
     return {"share_id": share_id, "agent_id": agent_id, "name": req.name, "created_at": registry_row["created_at"]}
 
 
-@router.get("/agents/by-source/{source_agent_id}")
-def get_public_share_by_source_route(source_agent_id: str, user: AuthedUser = Depends(get_current_user)):
-    """Lets the agent detail page find an already-created share for the
-    agent it's viewing, without creating a new one."""
-    rows, status_code = get_public_share_by_source_agent_id(user.access_token, source_agent_id)
-    if status_code >= 400:
-        raise HTTPException(status_code=status_code, detail=rows)
-    if not rows:
-        raise HTTPException(status_code=404, detail="No public share exists for this agent yet")
-    share = rows[0]
-    return {"share_id": share["share_id"], "agent_id": share["agent_id"], "created_at": share["created_at"]}
-
-
 class PublicChatRequest(BaseModel):
     message: NonEmptyStr
     anon_session_id: NonEmptyStr

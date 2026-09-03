@@ -6,6 +6,7 @@ from app.powabase_client import (
     get_chat_session_entry,
     get_chatbot_entry,
     get_chatbot_session_entry,
+    get_public_share_by_source_agent_id_service,
 )
 
 
@@ -26,6 +27,23 @@ def get_owned_session(
     if status_code >= 400 or not rows:
         raise HTTPException(status_code=404, detail="Session not found for this agent")
     return rows[0]
+
+
+def get_owned_public_share(agent_id: str, user: AuthedUser = Depends(get_current_user), agent: dict = Depends(get_owned_agent)) -> dict:
+    """
+    public_share_sessions has no RLS policies at all, so unlike every other
+    get_owned_* dependency here, RLS can't be relied on to scope this. The
+    row is fetched with the service key (bypassing RLS entirely) and
+    owner_user_id is compared against the caller's id explicitly, in Python,
+    before any session data behind this share is touched.
+    """
+    rows, status_code = get_public_share_by_source_agent_id_service(agent_id)
+    if status_code >= 400 or not rows:
+        raise HTTPException(status_code=404, detail="No public share exists for this agent")
+    share = rows[0]
+    if share["owner_user_id"] != user.id:
+        raise HTTPException(status_code=403, detail="Not authorized for this public share")
+    return share
 
 
 def get_owned_chatbot(chatbot_id: str, user: AuthedUser = Depends(get_current_user)) -> dict:

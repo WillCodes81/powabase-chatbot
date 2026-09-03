@@ -11,6 +11,7 @@ import { useConversation } from '../hooks/useConversation';
 import { useCredits } from '../context/CreditsContext';
 import { ChatPanel } from '../components/ChatPanel';
 import { SessionHistoryPanel } from '../components/SessionHistoryPanel';
+import { PublicShareSessionHistory } from '../components/PublicShareSessionHistory';
 import { FileUploadButton } from '../components/FileUploadButton';
 import { ConfirmButton } from '../components/ConfirmButton';
 import { ErrorBanner } from '../components/ErrorBanner';
@@ -167,6 +168,7 @@ export function AgentDetailPage() {
             </pre>
           </div>
         )}
+        {shareId && <PublicShareSessionHistory agentId={agentId!} />}
       </section>
 
       <section className={styles.section}>

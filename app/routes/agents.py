@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
 
 from app.deps import AuthedUser, get_current_user
-from app.ownership import get_owned_agent
+from app.ownership import get_owned_agent, get_owned_public_share
 from app.powabase_client import (
     SESSION_CONTEXT_TOOL_NAME,
     assign_tool_to_agent,
@@ -15,8 +15,12 @@ from app.powabase_client import (
     delete_public_share,
     ensure_session_context_tool,
     get_agent_session_kb_ids,
+    get_public_share_by_source_agent_id,
     get_public_share_session_kb_ids,
+    get_public_share_session_by_id,
+    get_public_share_sessions,
     get_public_shares_for_agent,
+    get_session_messages,
     insert_agent_registry_row,
     link_agent_knowledge_base,
     list_agent_registry_rows,
@@ -131,3 +135,55 @@ def delete_agent_route(agent_id: str, user: AuthedUser = Depends(get_current_use
         raise HTTPException(status_code=sc, detail="Failed to delete agent registry row")
 
     return {"deleted": True}
+
+
+@router.get("/by-source/{source_agent_id}")
+def get_public_share_by_source_route(source_agent_id: str, user: AuthedUser = Depends(get_current_user)):
+    """
+    Lets the agent detail page find an already-created share for the agent
+    it's viewing, without creating a new one. Requires login -- moved here
+    from public.py (which is mounted on public_app, the permissive-CORS app
+    built for anonymous visitors) since an authenticated-only route has no
+    business being reachable from an arbitrary origin.
+    """
+    rows, status_code = get_public_share_by_source_agent_id(user.access_token, source_agent_id)
+    if status_code >= 400:
+        raise HTTPException(status_code=status_code, detail=rows)
+    if not rows:
+        raise HTTPException(status_code=404, detail="No public share exists for this agent yet")
+    share = rows[0]
+    return {"share_id": share["share_id"], "agent_id": share["agent_id"], "created_at": share["created_at"]}
+
+
+@router.get("/{agent_id}/public-share/sessions")
+def list_public_share_sessions_route(agent_id: str, share: dict = Depends(get_owned_public_share)):
+    rows, status_code = get_public_share_sessions(share["share_id"])
+    if status_code >= 400:
+        raise HTTPException(status_code=status_code, detail=rows)
+    return [
+        {
+            "id": row["id"],
+            "anon_session_id": row["anon_session_id"],
+            "created_at": row["created_at"],
+            "has_document": bool(row.get("kb_id")),
+            "has_conversation": bool(row.get("powabase_session_id")),
+        }
+        for row in rows
+    ]
+
+
+@router.get("/{agent_id}/public-share/sessions/{session_id}/transcript")
+def get_public_share_session_transcript_route(agent_id: str, session_id: str, share: dict = Depends(get_owned_public_share)):
+    rows, status_code = get_public_share_session_by_id(share["share_id"], session_id)
+    if status_code >= 400 or not rows:
+        raise HTTPException(status_code=404, detail="Session not found for this public share")
+
+    session = rows[0]
+    powabase_session_id = session.get("powabase_session_id")
+    if not powabase_session_id:
+        return {"has_conversation": False, "messages": []}
+
+    data, status_code = get_session_messages(powabase_session_id)
+    if status_code >= 400:
+        raise HTTPException(status_code=status_code, detail=data)
+    return {"has_conversation": True, "messages": data.get("messages", [])}

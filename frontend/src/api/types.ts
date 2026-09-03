@@ -88,3 +88,16 @@ export interface CreditsSummary {
   tokens_remaining: number;
   tokens_used_total: number;
 }
+
+export interface PublicShareSessionSummary {
+  id: string;
+  anon_session_id: string;
+  created_at: string;
+  has_document: boolean;
+  has_conversation: boolean;
+}
+
+export interface PublicShareSessionTranscript {
+  has_conversation: boolean;
+  messages: SessionMessage[];
+}
