@@ -7,6 +7,7 @@ class Settings(BaseSettings):
     powabase_url: str
     powabase_anon_key: str
     powabase_service_key: str
+    public_base_url: str = ""
 
 
 settings = Settings()

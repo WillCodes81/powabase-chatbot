@@ -1,0 +1,88 @@
+.page {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: var(--space-7) var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5);
+  min-height: 100vh;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.uploadRow {
+  display: flex;
+  align-items: flex-start;
+}
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-md);
+  background: var(--color-surface);
+  flex: 1;
+  min-height: 420px;
+}
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--space-5);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.empty {
+  color: var(--color-text-muted);
+  font-size: var(--text-base);
+  margin: auto;
+}
+
+.bubbleUser,
+.bubbleAssistant {
+  max-width: 75%;
+  padding: var(--space-3) var(--space-4);
+  border-radius: var(--radius-md);
+  line-height: 1.5;
+  word-break: break-word;
+  white-space: pre-wrap;
+}
+
+.bubbleUser {
+  align-self: flex-end;
+  background: var(--gradient-accent);
+  color: #1a1300;
+  font-weight: 500;
+}
+
+.bubbleAssistant {
+  align-self: flex-start;
+  background: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+}
+
+.error {
+  padding: var(--space-2) var(--space-4);
+  border-radius: var(--radius-sm);
+  background: rgba(226, 87, 76, 0.12);
+  color: var(--color-danger-strong);
+  font-size: var(--text-sm);
+}
+
+.inputRow {
+  display: flex;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-top: 1px solid var(--color-border);
+}
+
+.inputRow input {
+  flex: 1;
+  min-width: 0;
+}
