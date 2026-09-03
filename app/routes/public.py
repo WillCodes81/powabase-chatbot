@@ -21,6 +21,7 @@ from app.powabase_client import (
     get_public_share,
     get_public_share_by_source_agent_id,
     get_public_share_usage_total,
+    get_public_shares_for_agent,
     get_session_messages,
     increment_public_share_usage,
     insert_agent_registry_row,
@@ -108,6 +109,28 @@ def create_public_agent_route(req: CreatePublicAgentRequest, user: AuthedUser = 
             # authoritative name already have it locally (it's the agent
             # they're viewing), so this isn't worth an extra registry fetch.
             return {"share_id": share["share_id"], "agent_id": share["agent_id"], "name": req.name, "created_at": share["created_at"]}
+
+        # A mirror agent (the Agent a public share itself creates) gets
+        # registered in agents_registry like any other agent, so it's fully
+        # visible and clickable from the owner's own dashboard -- nothing
+        # marks it as a mirror. Without this check, opening a mirror's own
+        # detail page and clicking "Get shareable link" on IT is a
+        # perfectly legitimate, never-before-shared source_agent_id as far
+        # as the idempotency check above is concerned, so it would happily
+        # create a share-of-a-share, whose name compounds another literal
+        # " (Public)" onto a name that already has one. Reject it instead.
+        mirror_rows, status_code = get_public_shares_for_agent(req.source_agent_id)
+        if status_code >= 400:
+            raise HTTPException(status_code=status_code, detail=mirror_rows)
+        if mirror_rows:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    "This agent is itself a public-share mirror, not an original agent, so it can't "
+                    "be shared again. Open the original agent this share was created from and share "
+                    "that one instead."
+                ),
+            )
 
     kb_data, status_code = create_knowledge_base(f"{req.name}-{user.id}")
     if status_code >= 400:
