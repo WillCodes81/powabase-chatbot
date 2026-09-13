@@ -3,7 +3,7 @@ import { NEW_SIGNUP_KEY } from '../auth/AuthContext';
 import styles from './OnboardingTour.module.css';
 
 interface TourStep {
-  target: string;
+  target?: string;
   title: string;
   body: string;
 }
@@ -29,11 +29,16 @@ const STEPS: TourStep[] = [
     title: 'Your account',
     body: 'Manage your session and log out from here whenever you need to.',
   },
+  {
+    title: 'Share your agent',
+    body: 'Open any agent and hit "Get shareable link" to create a public chat link or an embeddable widget snippet — no account required for whoever you send it to.',
+  },
 ];
 
 const POPOVER_WIDTH = 320;
 const GAP = 14;
 const SPOTLIGHT_PADDING = 8;
+const DIM_BACKGROUND = 'rgba(12, 14, 18, 0.78)';
 
 interface Rect {
   top: number;
@@ -49,20 +54,29 @@ function measure(target: string): Rect | null {
   return { top: r.top, left: r.left, width: r.width, height: r.height };
 }
 
-export function OnboardingTour() {
-  const [active, setActive] = useState(false);
+interface OnboardingTourProps {
+  active: boolean;
+  onClose: () => void;
+}
+
+export function OnboardingTour({ active, onClose }: OnboardingTourProps) {
   const [stepIndex, setStepIndex] = useState(0);
   const [rect, setRect] = useState<Rect | null>(null);
   const popoverRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (localStorage.getItem(NEW_SIGNUP_KEY) === 'true') setActive(true);
-  }, []);
+    if (active) setStepIndex(0);
+  }, [active]);
 
   useLayoutEffect(() => {
-    if (!active) return;
+    if (!active) return undefined;
+    const target = STEPS[stepIndex].target;
+    if (!target) {
+      setRect(null);
+      return undefined;
+    }
     function recompute() {
-      setRect(measure(STEPS[stepIndex].target));
+      setRect(measure(target!));
     }
     recompute();
     window.addEventListener('resize', recompute);
@@ -70,7 +84,7 @@ export function OnboardingTour() {
   }, [active, stepIndex]);
 
   useEffect(() => {
-    if (active && rect) popoverRef.current?.focus();
+    if (active) popoverRef.current?.focus();
   }, [active, stepIndex, rect]);
 
   useEffect(() => {
@@ -84,8 +98,10 @@ export function OnboardingTour() {
   }, [active]);
 
   function finish() {
+    // Harmless no-op when the tour was started manually rather than via
+    // the signup flag -- there's nothing to remove in that case.
     localStorage.removeItem(NEW_SIGNUP_KEY);
-    setActive(false);
+    onClose();
   }
 
   function next() {
@@ -96,27 +112,33 @@ export function OnboardingTour() {
     }
   }
 
-  if (!active || !rect) return null;
-
   const step = STEPS[stepIndex];
+  if (!active) return null;
+  if (step.target && !rect) return null;
 
-  const spotlightStyle = {
-    top: rect.top - SPOTLIGHT_PADDING,
-    left: rect.left - SPOTLIGHT_PADDING,
-    width: rect.width + SPOTLIGHT_PADDING * 2,
-    height: rect.height + SPOTLIGHT_PADDING * 2,
-  };
+  const spotlightStyle = rect
+    ? {
+        top: rect.top - SPOTLIGHT_PADDING,
+        left: rect.left - SPOTLIGHT_PADDING,
+        width: rect.width + SPOTLIGHT_PADDING * 2,
+        height: rect.height + SPOTLIGHT_PADDING * 2,
+      }
+    : undefined;
 
-  const rawLeft = rect.left;
-  const maxLeft = Math.max(window.innerWidth - POPOVER_WIDTH - 16, 16);
-  const popoverStyle = {
-    top: rect.top + rect.height + SPOTLIGHT_PADDING + GAP,
-    left: Math.min(Math.max(rawLeft, 16), maxLeft),
-  };
+  const popoverStyle = rect
+    ? {
+        top: rect.top + rect.height + SPOTLIGHT_PADDING + GAP,
+        left: Math.min(Math.max(rect.left, 16), Math.max(window.innerWidth - POPOVER_WIDTH - 16, 16)),
+      }
+    : {
+        top: '50%',
+        left: '50%',
+        transform: 'translate(-50%, -50%)',
+      };
 
   return (
-    <div className={styles.blocker}>
-      <div className={styles.spotlight} style={spotlightStyle} />
+    <div className={styles.blocker} style={rect ? undefined : { background: DIM_BACKGROUND }}>
+      {spotlightStyle && <div className={styles.spotlight} style={spotlightStyle} />}
       <div
         className={styles.popover}
         style={popoverStyle}

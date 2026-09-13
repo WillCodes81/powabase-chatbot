@@ -53,6 +53,20 @@ export function clearPublicSession(shareId: string): void {
   localStorage.removeItem(messagesKey(shareId));
 }
 
+export function getExistingAnonSessionId(shareId: string): string | null {
+  return localStorage.getItem(sessionKey(shareId));
+}
+
+// Best-effort: New Session must still reset local state even if this fails,
+// so failures are swallowed here rather than surfaced to callers.
+export async function clearPublicSessionDocument(apiBase: string, shareId: string, anonSessionId: string): Promise<void> {
+  try {
+    await fetch(`${apiBase}/public/${shareId}/sessions/${anonSessionId}/document`, { method: 'DELETE' });
+  } catch {
+    // ignored
+  }
+}
+
 export async function sendPublicChatMessage(apiBase: string, shareId: string, message: string): Promise<string> {
   const anonSessionId = getOrCreateAnonSessionId(shareId);
   const response = await fetch(`${apiBase}/public/${shareId}/chat`, {

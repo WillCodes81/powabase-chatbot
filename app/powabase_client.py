@@ -1193,7 +1193,7 @@ def get_public_share_by_source_agent_id(access_token: str, source_agent_id: str)
             "apikey": settings.powabase_anon_key,
             "Authorization": f"Bearer {access_token}",
         },
-        params={"source_agent_id": f"eq.{source_agent_id}", "select": "share_id,agent_id,created_at"},
+        params={"source_agent_id": f"eq.{source_agent_id}", "select": "share_id,agent_id,kb_id,created_at"},
     )
     return response.json(), response.status_code
 
@@ -1386,6 +1386,19 @@ def update_public_share_session_kb_id(share_id: str, anon_session_id: str, kb_id
         },
         params={"share_id": f"eq.{share_id}", "anon_session_id": f"eq.{anon_session_id}"},
         json={"kb_id": kb_id},
+    )
+
+
+def clear_public_share_session_kb_id(share_id: str, anon_session_id: str) -> None:
+    requests.patch(
+        f"{settings.powabase_url}/rest/v1/public_share_sessions",
+        headers={
+            "apikey": settings.powabase_service_key,
+            "Authorization": f"Bearer {settings.powabase_service_key}",
+            "Content-Type": "application/json",
+        },
+        params={"share_id": f"eq.{share_id}", "anon_session_id": f"eq.{anon_session_id}"},
+        json={"kb_id": None},
     )
 
 

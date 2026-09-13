@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
-import { useAuth } from '../auth/AuthContext';
+import { NEW_SIGNUP_KEY, useAuth } from '../auth/AuthContext';
 import { CreditsProvider, useCredits } from '../context/CreditsContext';
 import { OnboardingTour } from './OnboardingTour';
 import styles from './AppShell.module.css';
@@ -106,6 +106,15 @@ function AccountMenu() {
 }
 
 function AppShellLayout() {
+  const [tourActive, setTourActive] = useState(false);
+
+  // The tour's ONLY automatic trigger: fires once per mount, exactly when a
+  // fresh signup set this flag. It never re-checks or re-fires on its own --
+  // manually starting the tour below never touches this flag either way.
+  useEffect(() => {
+    if (localStorage.getItem(NEW_SIGNUP_KEY) === 'true') setTourActive(true);
+  }, []);
+
   return (
     <div className={styles.shell}>
       <header className={styles.topnav}>
@@ -117,6 +126,9 @@ function AppShellLayout() {
           <NavLink to="/" end className={({ isActive }) => (isActive ? styles.navLinkActive : styles.navLink)}>
             Dashboard
           </NavLink>
+          <button type="button" className={styles.navLink} onClick={() => setTourActive(true)}>
+            Onboarding
+          </button>
         </nav>
         <div className={styles.right}>
           <div data-tour="token-balance">
@@ -128,7 +140,7 @@ function AppShellLayout() {
       <main className={styles.main}>
         <Outlet />
       </main>
-      <OnboardingTour />
+      <OnboardingTour active={tourActive} onClose={() => setTourActive(false)} />
     </div>
   );
 }

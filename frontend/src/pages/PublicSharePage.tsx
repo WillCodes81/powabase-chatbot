@@ -3,6 +3,8 @@ import { useParams } from 'react-router-dom';
 import {
   attachPublicDocument,
   clearPublicSession,
+  clearPublicSessionDocument,
+  getExistingAnonSessionId,
   loadCachedMessages,
   saveCachedMessages,
   sendPublicChatMessage,
@@ -47,8 +49,12 @@ export function PublicSharePage() {
     }
   }
 
-  function handleNewSession() {
+  async function handleNewSession() {
     if (!shareId) return;
+    const anonSessionId = getExistingAnonSessionId(shareId);
+    if (anonSessionId) {
+      await clearPublicSessionDocument(API_BASE_URL, shareId, anonSessionId);
+    }
     clearPublicSession(shareId);
     setMessages([]);
     setError(null);

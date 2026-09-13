@@ -84,15 +84,16 @@ def update_agent_route(agent_id: str, req: UpdateAgentRequest, user: AuthedUser 
     return data
 
 
-@router.delete("/{agent_id}")
-def delete_agent_route(agent_id: str, user: AuthedUser = Depends(get_current_user), agent: dict = Depends(get_owned_agent)):
-    if agent.get("chatbot_id"):
-        raise HTTPException(
-            status_code=400,
-            detail="This agent belongs to a chatbot -- remove it via DELETE /chatbots/{chatbot_id}/agents/{agent_id} instead.",
-        )
-
-    kb_id = agent.get("kb_id")
+def _delete_agent_full(agent_id: str, access_token: str, kb_id: str | None) -> None:
+    """
+    Full teardown for one agent: its own KB, any public_shares row keyed by
+    its own agent_id (self-match -- this is what fully cleans up a mirror
+    agent when called with the mirror's own id, including the mirror's
+    anonymous session KBs), its own session KBs, its session history, the
+    Agent object, and its registry row. Shared by delete_agent_route for
+    both the target agent and, when the target is a share's source, its
+    orphaned mirror -- same rigor, no duplicated logic.
+    """
     if kb_id:
         _, sc = delete_knowledge_base(kb_id)
         if sc >= 400:
@@ -114,7 +115,7 @@ def delete_agent_route(agent_id: str, user: AuthedUser = Depends(get_current_use
         if sc >= 400:
             raise HTTPException(status_code=sc, detail=f"Failed to delete public share {share_id}")
 
-    session_kb_rows, status_code = get_agent_session_kb_ids(user.access_token, agent_id)
+    session_kb_rows, status_code = get_agent_session_kb_ids(access_token, agent_id)
     if status_code >= 400:
         raise HTTPException(status_code=status_code, detail="Failed to look up agent's session knowledge bases")
     for row in session_kb_rows:
@@ -122,7 +123,7 @@ def delete_agent_route(agent_id: str, user: AuthedUser = Depends(get_current_use
         if sc >= 400:
             raise HTTPException(status_code=sc, detail=f"Failed to delete session knowledge base {row['kb_id']}")
 
-    _, sc = delete_agent_session_rows(user.access_token, agent_id)
+    _, sc = delete_agent_session_rows(access_token, agent_id)
     if sc >= 400:
         raise HTTPException(status_code=sc, detail="Failed to delete agent's session history")
 
@@ -130,9 +131,31 @@ def delete_agent_route(agent_id: str, user: AuthedUser = Depends(get_current_use
     if sc >= 400:
         raise HTTPException(status_code=sc, detail="Failed to delete agent")
 
-    _, sc = delete_agent_registry_row(user.access_token, agent_id)
+    _, sc = delete_agent_registry_row(access_token, agent_id)
     if sc >= 400:
         raise HTTPException(status_code=sc, detail="Failed to delete agent registry row")
+
+
+@router.delete("/{agent_id}")
+def delete_agent_route(agent_id: str, user: AuthedUser = Depends(get_current_user), agent: dict = Depends(get_owned_agent)):
+    if agent.get("chatbot_id"):
+        raise HTTPException(
+            status_code=400,
+            detail="This agent belongs to a chatbot -- remove it via DELETE /chatbots/{chatbot_id}/agents/{agent_id} instead.",
+        )
+
+    # Looked up before any deletion happens, in case deleting the source
+    # agent triggers a DB-level cascade on public_shares.source_agent_id
+    # that would otherwise remove this row out from under us.
+    source_share_rows, status_code = get_public_share_by_source_agent_id(user.access_token, agent_id)
+    if status_code >= 400:
+        raise HTTPException(status_code=status_code, detail="Failed to look up mirror for this agent")
+    mirror_share = source_share_rows[0] if source_share_rows else None
+
+    _delete_agent_full(agent_id, user.access_token, agent.get("kb_id"))
+
+    if mirror_share:
+        _delete_agent_full(mirror_share["agent_id"], user.access_token, mirror_share.get("kb_id"))
 
     return {"deleted": True}
 

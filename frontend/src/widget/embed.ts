@@ -1,6 +1,8 @@
 import {
   attachPublicDocument,
   clearPublicSession,
+  clearPublicSessionDocument,
+  getExistingAnonSessionId,
   loadCachedMessages,
   saveCachedMessages,
   sendPublicChatMessage,
@@ -181,8 +183,12 @@ function mount() {
   // conversation.
   let sending = false;
 
-  newSessionBtn.addEventListener('click', () => {
+  newSessionBtn.addEventListener('click', async () => {
     if (sending) return;
+    const anonSessionId = getExistingAnonSessionId(shareId);
+    if (anonSessionId) {
+      await clearPublicSessionDocument(apiBase, shareId, anonSessionId);
+    }
     clearPublicSession(shareId);
     messages = [];
     uploadStatus.textContent = '';

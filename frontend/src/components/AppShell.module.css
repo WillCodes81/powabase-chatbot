@@ -50,6 +50,8 @@
   font-size: var(--text-sm);
   font-weight: 600;
   border: 1px solid transparent;
+  background: transparent;
+  appearance: none;
   transition: border-color 150ms ease, background 150ms ease, color 150ms ease;
 }
 .navLink:hover {

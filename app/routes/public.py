@@ -13,8 +13,10 @@ from app.powabase_client import (
     SESSION_CONTEXT_TOOL_NAME,
     add_source_to_kb,
     assign_tool_to_agent,
+    clear_public_share_session_kb_id,
     create_agent,
     create_knowledge_base,
+    delete_knowledge_base,
     ensure_session_context_tool,
     ensure_user_credits_row,
     get_or_create_public_share_session,
@@ -292,3 +294,24 @@ def public_attach_document_route(request: Request, share_id: str, anon_session_i
         raise HTTPException(status_code=status_code, detail=index_data)
 
     return {"kb_id": kb_id, "source_id": source_id, "filename": file.filename, **index_data}
+
+
+@router.delete("/{share_id}/sessions/{anon_session_id}/document")
+def public_delete_session_document_route(share_id: str, anon_session_id: str):
+    """
+    Powers "New Session": deletes the visitor's uploaded document (if any)
+    without touching the session row, powabase_session_id, or transcript --
+    those stay intact so the conversation still shows up in the owner's
+    Session History afterward.
+    """
+    share_rows, status_code = get_public_share(share_id)
+    if status_code >= 400 or not share_rows:
+        raise HTTPException(status_code=404, detail="Public share not found")
+
+    session = get_or_create_public_share_session(share_id, anon_session_id)
+    kb_id = session.get("kb_id")
+    if kb_id:
+        delete_knowledge_base(kb_id)
+        clear_public_share_session_kb_id(share_id, anon_session_id)
+
+    return {"deleted": True, "kb_deleted": bool(kb_id)}
